@@ -9,7 +9,7 @@
 
 ##Informações Gerais do Projeto
 
-Patch 6.x - NDP-DB 6.x (Alpha)
+Patch 6.x - NDP-DB 6.x (Alpha) 
 
 - Level 100
 - Correções Diárias
