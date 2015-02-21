@@ -293,7 +293,7 @@ PlayerSaveInterval = 90000
 #        Default:     0  - (Disabled, Do not save character stats)
 #                     1+ - (Enabled, Level beyond which character stats are saved)
 
-PlayerSave.Stats.MinLevel = 1+
+PlayerSave.Stats.MinLevel = 0
 
 #
 #    PlayerSave.Stats.SaveOnlyOnLogout
@@ -309,7 +309,7 @@ PlayerSave.Stats.SaveOnlyOnLogout = 1
 #        Default:     0 - (Disabled)
 #                     1 - (Enabled)
 
-mmap.enablePathFinding = 1
+mmap.enablePathFinding = 0
 
 #
 #    vmap.enableLOS
@@ -615,9 +615,9 @@ ArenaTeam.CharterCost.5v5 = 2000000
 #
 #    MaxWhoListReturns
 #        Description: Set the max number of players returned in the /who list and interface.
-#        Default:     49 - (stable)
+#        Default:     50 - (stable)
 
-MaxWhoListReturns = 49
+MaxWhoListReturns = 50
 
 #
 #    CharacterCreating.Disabled
@@ -745,7 +745,7 @@ StartPlayerLevel = 1
 #        Range:       1-MaxPlayerLevel
 #        Default:     55
 
-StartHeroicPlayerLevel = 90
+StartHeroicPlayerLevel = 55
 
 #
 #    StartPlayerMoney
@@ -753,7 +753,7 @@ StartHeroicPlayerLevel = 90
 #        Default:     0
 #                     100 - (1 Silver)
 
-StartPlayerMoney = 250000000
+StartPlayerMoney = 0
 
 #
 #    RecruitAFriend.MaxLevel
@@ -1040,9 +1040,9 @@ BeepAtStart = 1
 #        Description: Message of the Day, displayed at login.
 #                     Use '@' for a newline and be sure to escape special characters.
 #        Example:     "Welcome to John\'s Server@This server runs on DeathCore."
-#        Default:     "Welcome to a DeathCore server."
+#        Default:     "Welcome to a DeathCore."
 
-Motd = "Welcome to a DeathCore Server - Warlords Of Draenor (ALPHA)."
+Motd = "Welcome to a DeathCore 5.4.8 (Alpha)"
 
 #
 #    Server.LoginInfo
@@ -1060,12 +1060,31 @@ Server.LoginInfo = 0
 Command.LookupMaxResults = 0
 
 #
-#    AllowTickets
-#        Description: Allow/disallow sending new tickets.
+#    Ticket.SystemStatus
+#        Description: Enable/disable the ticket system. This disables the whole customer
+#                     support UI after trying to send a ticket in disabled state
+#                     (MessageBox: "GM Help Tickets are currently unavailable.").
+#                     UI remains disabled until the character relogs.
 #        Default:     1 - (Enabled)
 #                     0 - (Disabled)
 
-AllowTickets = 1
+Ticket.SystemStatus = 1
+
+#
+#    Ticket.SubmitTicket
+#        Description: Allow/disallow opening new tickets.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled, Experimental)
+
+Ticket.SubmitTicket = 0
+
+#
+#    Ticket.SubmitBug
+#        Description: Allow/disallow opening new bug reports.
+#        Default:    0 - (Disabled)
+#                    1 - (Enabled, Experimental)
+
+Ticket.SubmitBug = 0
 
 #
 #     DungeonFinder.OptionsMask
@@ -1144,7 +1163,7 @@ FeatureSystem.CharacterUndelete.Cooldown = 2592000
 #        Default:     0 - (Disabled)
 #                     1 - (Enabled)
 
-Warden.Enabled = 1
+Warden.Enabled = 0
 
 #
 #    Warden.NumMemChecks
@@ -1189,7 +1208,7 @@ Warden.ClientCheckHoldOff = 30
 #                     1 - (Kick)
 #                     2 - (Ban)
 
-Warden.ClientCheckFailAction = 1
+Warden.ClientCheckFailAction = 0
 
 #
 #    Warden.BanDuration
@@ -2388,7 +2407,7 @@ Console.Enable = 1
 #        Default:     0 - (Disabled)
 #                     1 - (Enabled)
 
-Ra.Enable = 1
+Ra.Enable = 0
 
 #
 #    Ra.IP
@@ -2699,6 +2718,21 @@ Calculate.Creature.Zone.Area.Data = 0
 #        Default:     0  - (Do not show)
 
 Calculate.Gameoject.Zone.Area.Data = 0
+
+#
+#     NoGrayAggro
+#        Description: Gray mobs will not aggro players above/below some levels
+#                     NoGrayAggro.Above: If player is at this level or above, gray mobs will not attack
+#                     NoGrayAggro.Below: If player is at this level or below, gray mobs will not attack
+#        Example:     You can for example make players free from gray until they reach level 30.
+#                     Then gray will start to attack them, until they reach max level (80 for example):
+#                     NoGrayAggro.Above = 80
+#                     NoGrayAggro.Below = 29
+#        Default: 0 - (Blizzlike)
+#
+
+NoGrayAggro.Above = 0
+NoGrayAggro.Below = 0
 
 #
 ###################################################################################################
@@ -3024,31 +3058,52 @@ AuctionHouseBot.Buyer.Horde.Enabled = 0
 AuctionHouseBot.Buyer.Neutral.Enabled = 0
 
 #
-#    AuctionHouseBot.BuyPrice.Buyer
-#       Description: Should the Buyer use BuyPrice or SellPrice to determine Bid Prices
-#       Default:     1 - (use BuyPrice)
-#                    0 - (use SellPrice)
+#    AuctionHouseBot.Buyer.Baseprice.QUALITY
+#       Description: Base sellprices in copper for non priced items for each quality.
+#                    The default values are based on average item prices of each quality.
+#       Defaults:    Gray   3504
+#                    White  5429
+#                    Green  21752
+#                    Blue   36463
+#                    Purple 87124
+#                    Orange 214347
+#                    Yellow 407406
 
-AuctionHouseBot.Buyer.Buyprice = 1
+AuctionHouseBot.Buyer.Baseprice.Gray = 3504
+AuctionHouseBot.Buyer.Baseprice.White = 5429
+AuctionHouseBot.Buyer.Baseprice.Green = 21752
+AuctionHouseBot.Buyer.Baseprice.Blue = 36463
+AuctionHouseBot.Buyer.Baseprice.Purple = 87124
+AuctionHouseBot.Buyer.Baseprice.Orange = 214347
+AuctionHouseBot.Buyer.Baseprice.Yellow = 407406
+
+#
+#    AuctionHouseBot.Buyer.ChanceMultiplier.QUALITY
+#       Description: Multipliers for the buy/bid chances for each quality. 100 means the chance is 100% of the original,
+#                    1 would mean 1 % of the original and 200 would mean 200% of the original chance.
+#       Defaults:    Gray   100
+#                    White  100
+#                    Green  100
+#                    Blue   100
+#                    Purple 100
+#                    Orange 100
+#                    Yellow 100
+
+AuctionHouseBot.Buyer.ChanceMultiplier.Gray = 100
+AuctionHouseBot.Buyer.ChanceMultiplier.White = 100
+AuctionHouseBot.Buyer.ChanceMultiplier.Green = 100
+AuctionHouseBot.Buyer.ChanceMultiplier.Blue = 100
+AuctionHouseBot.Buyer.ChanceMultiplier.Purple = 100
+AuctionHouseBot.Buyer.ChanceMultiplier.Orange = 100
+AuctionHouseBot.Buyer.ChanceMultiplier.Yellow = 100
 
 #
 #    AuctionHouseBot.Buyer.Recheck.Interval
-#       Description: This specifies the time interval (in minutes) between two evaluations of the same selled item.
-#                    The lesser this value is, the more chances you give for item to be bought by ahbot.
+#       Description: This specifies the time interval (in minutes) between two evaluations of the same sold item.
+#                    The smaller this value is, the more chances you give for an item to be bought by ahbot.
 #       Default:     20 (20min.)
 
 AuctionHouseBot.Buyer.Recheck.Interval = 20
-
-#
-#    AuctionHouseBot.Buyer.Alliance.Chance.Ratio
-#       Description: Chance ratio for the buyer to buy an item. Higher the value, lesser the probability
-#       Example:     3 (1 out of 3 change, that is, 33%).
-#       Default:     3
-#
-
-AuctionHouseBot.Buyer.Alliance.Chance.Ratio = 3
-AuctionHouseBot.Buyer.Horde.Chance.Ratio = 3
-AuctionHouseBot.Buyer.Neutral.Chance.Ratio = 3
 
 #
 ###################################################################################################

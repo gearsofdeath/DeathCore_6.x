@@ -28,7 +28,10 @@ namespace WorldPackets
         class EnumCharacters final : public ClientPacket
         {
         public:
-            EnumCharacters(WorldPacket&& packet) : ClientPacket(CMSG_CHAR_ENUM, std::move(packet)) { }
+            EnumCharacters(WorldPacket&& packet) : ClientPacket(std::move(packet))
+            {
+                ASSERT(GetOpcode() == CMSG_CHAR_ENUM || GetOpcode() == CMSG_CHAR_UNDELETE_ENUM);
+            }
 
             void Read() override { }
         };
@@ -383,6 +386,14 @@ namespace WorldPackets
             uint32 Result = 0; ///< @see enum CharacterUndeleteResult
         };
 
+        class GetUndeleteCooldownStatus final : public ClientPacket
+        {
+        public:
+            GetUndeleteCooldownStatus(WorldPacket&& packet) : ClientPacket(CMSG_GET_UNDELETE_COOLDOWN_STATUS, std::move(packet)) { }
+
+            void Read() override { }
+        };
+
         class UndeleteCooldownStatusResponse final : public ServerPacket
         {
         public:
@@ -489,6 +500,16 @@ namespace WorldPackets
             time_t RaidOrigin = time_t(1135753200); // 28/12/2005 07:00:00
             std::vector<uint8> QuestsCompleted;
             int32 ServerRegionID = 3;   // Cfg_Regions.dbc, EU
+        };
+
+        class SetActionBarToggles final : public ClientPacket
+        {
+        public:
+            SetActionBarToggles(WorldPacket&& packet) : ClientPacket(CMSG_SET_ACTIONBAR_TOGGLES, std::move(packet)) { }
+
+            void Read() override;
+
+            uint8 Mask = 0;
         };
     }
 }

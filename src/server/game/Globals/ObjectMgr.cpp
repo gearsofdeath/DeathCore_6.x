@@ -156,11 +156,11 @@ bool normalizePlayerName(std::string& name)
 }
 
 // Extracts player and realm names delimited by -
-ExtendedPlayerName ExtractExtendedPlayerName(std::string& name)
+ExtendedPlayerName ExtractExtendedPlayerName(std::string const& name)
 {
     size_t pos = name.find('-');
     if (pos != std::string::npos)
-        return ExtendedPlayerName(name.substr(0, pos), name.substr(pos+1));
+        return ExtendedPlayerName(name.substr(0, pos), name.substr(pos + 1));
     else
         return ExtendedPlayerName(name, "");
 }
@@ -1869,7 +1869,7 @@ ObjectGuid::LowType ObjectMgr::AddGOData(uint32 entry, uint32 mapId, float x, fl
     data.spawnMask      = 1;
     data.go_state       = GO_STATE_READY;
     data.phaseMask      = PHASEMASK_NORMAL;
-    data.artKit         = goinfo->type == GAMEOBJECT_TYPE_CAPTURE_POINT ? 21 : 0;
+    data.artKit         = goinfo->type == GAMEOBJECT_TYPE_CONTROL_ZONE ? 21 : 0;
     data.dbData = false;
 
     AddGameobjectToGrid(guid, &data);
@@ -2438,14 +2438,7 @@ void ObjectMgr::LoadItemTemplates()
         if (itemItr == _itemTemplateStore.end())
             continue;
 
-        ItemEffect effect;
-        effect.SpellID = effectEntry->SpellID;
-        effect.Trigger = effectEntry->Trigger;
-        effect.Charges = effectEntry->Charges;
-        effect.Cooldown = effectEntry->Cooldown;
-        effect.Category = effectEntry->Category;
-        effect.CategoryCooldown = effectEntry->CategoryCooldown;
-        itemItr->second.Effects.push_back(effect);
+        itemItr->second.Effects.push_back(effectEntry);
     }
 
     // Check if item templates for DBC referenced character start outfit are present
@@ -6801,6 +6794,7 @@ void ObjectMgr::LoadReputationSpilloverTemplate()
             continue;
         }
 
+        bool invalidSpilloverFaction = false;
         for (uint32 i = 0; i < MAX_SPILLOVER_FACTIONS; ++i)
         {
             if (repTemplate.faction[i])
@@ -6810,53 +6804,28 @@ void ObjectMgr::LoadReputationSpilloverTemplate()
                 if (!factionSpillover)
                 {
                     TC_LOG_ERROR("sql.sql", "Spillover faction (faction.dbc) %u does not exist but is used in `reputation_spillover_template` for faction %u, skipping", repTemplate.faction[i], factionId);
-                    continue;
+                    invalidSpilloverFaction = true;
+                    break;
                 }
 
                 if (!factionSpillover->CanHaveReputation())
                 {
                     TC_LOG_ERROR("sql.sql", "Spillover faction (faction.dbc) %u for faction %u in `reputation_spillover_template` can not be listed for client, and then useless, skipping", repTemplate.faction[i], factionId);
-                    continue;
+                    invalidSpilloverFaction = true;
+                    break;
                 }
 
                 if (repTemplate.faction_rank[i] >= MAX_REPUTATION_RANK)
                 {
                     TC_LOG_ERROR("sql.sql", "Rank %u used in `reputation_spillover_template` for spillover faction %u is not valid, skipping", repTemplate.faction_rank[i], repTemplate.faction[i]);
-                    continue;
+                    invalidSpilloverFaction = true;
+                    break;
                 }
             }
         }
 
-        FactionEntry const* factionEntry0 = sFactionStore.LookupEntry(repTemplate.faction[0]);
-        if (repTemplate.faction[0] && !factionEntry0)
-        {
-            TC_LOG_ERROR("sql.sql", "Faction (faction.dbc) %u does not exist but is used in `reputation_spillover_template`", repTemplate.faction[0]);
+        if (invalidSpilloverFaction)
             continue;
-        }
-        FactionEntry const* factionEntry1 = sFactionStore.LookupEntry(repTemplate.faction[1]);
-        if (repTemplate.faction[1] && !factionEntry1)
-        {
-            TC_LOG_ERROR("sql.sql", "Faction (faction.dbc) %u does not exist but is used in `reputation_spillover_template`", repTemplate.faction[1]);
-            continue;
-        }
-        FactionEntry const* factionEntry2 = sFactionStore.LookupEntry(repTemplate.faction[2]);
-        if (repTemplate.faction[2] && !factionEntry2)
-        {
-            TC_LOG_ERROR("sql.sql", "Faction (faction.dbc) %u does not exist but is used in `reputation_spillover_template`", repTemplate.faction[2]);
-            continue;
-        }
-        FactionEntry const* factionEntry3 = sFactionStore.LookupEntry(repTemplate.faction[3]);
-        if (repTemplate.faction[3] && !factionEntry3)
-        {
-            TC_LOG_ERROR("sql.sql", "Faction (faction.dbc) %u does not exist but is used in `reputation_spillover_template`", repTemplate.faction[3]);
-            continue;
-        }
-        FactionEntry const* factionEntry4 = sFactionStore.LookupEntry(repTemplate.faction[4]);
-        if (repTemplate.faction[4] && !factionEntry4)
-        {
-            TC_LOG_ERROR("sql.sql", "Faction (faction.dbc) %u does not exist but is used in `reputation_spillover_template`", repTemplate.faction[4]);
-            continue;
-        }
 
         _repSpilloverTemplateStore[factionId] = repTemplate;
 

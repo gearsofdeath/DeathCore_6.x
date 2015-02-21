@@ -37,11 +37,13 @@ DB2Storage<ItemModifiedAppearanceEntry>     sItemModifiedAppearanceStore(ItemMod
 DB2Storage<ItemSparseEntry>                 sItemSparseStore(ItemSparsefmt);
 DB2Storage<ItemXBonusTreeEntry>             sItemXBonusTreeStore(ItemXBonusTreeEntryfmt);
 DB2Storage<KeyChainEntry>                   sKeyChainStore(KeyChainfmt);
+DB2Storage<MountEntry>                      sMountStore(Mountfmt);
 DB2Storage<OverrideSpellDataEntry>          sOverrideSpellDataStore(OverrideSpellDataEntryfmt);
 DB2Storage<PhaseGroupEntry>                 sPhaseGroupStore(PhaseGroupEntryfmt);
 DB2Storage<SpellAuraRestrictionsEntry>      sSpellAuraRestrictionsStore(SpellAuraRestrictionsEntryfmt);
 DB2Storage<SpellCastingRequirementsEntry>   sSpellCastingRequirementsStore(SpellCastingRequirementsEntryfmt);
 DB2Storage<SpellClassOptionsEntry>          sSpellClassOptionsStore(SpellClassOptionsEntryfmt);
+DB2Storage<SpellLearnSpellEntry>            sSpellLearnSpellStore(SpellLearnSpellEntryfmt);
 DB2Storage<SpellMiscEntry>                  sSpellMiscStore(SpellMiscEntryfmt);
 DB2Storage<SpellPowerEntry>                 sSpellPowerStore(SpellPowerEntryfmt);
 SpellPowerBySpellIDMap                      sSpellPowerBySpellIDStore;
@@ -137,11 +139,13 @@ void DB2Manager::LoadStores(std::string const& dataPath)
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sItemSparseStore,           db2Path,    "Item-sparse.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sItemXBonusTreeStore,       db2Path,    "ItemXBonusTree.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sKeyChainStore,             db2Path,    "KeyChain.db2");
+    LoadDB2(availableDb2Locales, bad_db2_files, _stores, sMountStore,                db2Path,    "Mount.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sOverrideSpellDataStore,    db2Path,    "OverrideSpellData.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sPhaseGroupStore,           db2Path,    "PhaseXPhaseGroup.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sSpellAuraRestrictionsStore, db2Path,   "SpellAuraRestrictions.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sSpellCastingRequirementsStore, db2Path, "SpellCastingRequirements.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sSpellClassOptionsStore,    db2Path,    "SpellClassOptions.db2");
+    LoadDB2(availableDb2Locales, bad_db2_files, _stores, sSpellLearnSpellStore,      db2Path,    "SpellLearnSpell.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sSpellMiscStore,            db2Path,    "SpellMisc.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sSpellPowerStore,           db2Path,    "SpellPower.db2");
     LoadDB2(availableDb2Locales, bad_db2_files, _stores, sSpellReagentsStore,        db2Path,    "SpellReagents.db2");
@@ -189,14 +193,18 @@ void DB2Manager::LoadStores(std::string const& dataPath)
                     _heirloomCurvePoints[curvePoint->CurveID][curvePoint->Index] = curvePoint;
     }
 
-    for (uint32 i = 0; i < sSpellPowerStore.GetNumRows(); ++i)
-        if (SpellPowerEntry const* power = sSpellPowerStore.LookupEntry(i))
-            sSpellPowerBySpellIDStore[power->SpellID] = power;
+    for (uint32 i = 0; i < sMountStore.GetNumRows(); ++i)
+        if (MountEntry const* mount = sMountStore.LookupEntry(i))
+            _mountsBySpellId[mount->SpellId] = mount;
 
     for (uint32 i = 0; i < sPhaseGroupStore.GetNumRows(); ++i)
         if (PhaseGroupEntry const* group = sPhaseGroupStore.LookupEntry(i))
             if (PhaseEntry const* phase = sPhaseStore.LookupEntry(group->PhaseID))
                 _phasesByGroup[group->PhaseGroupID].insert(phase->ID);
+
+    for (uint32 i = 0; i < sSpellPowerStore.GetNumRows(); ++i)
+        if (SpellPowerEntry const* power = sSpellPowerStore.LookupEntry(i))
+            sSpellPowerBySpellIDStore[power->SpellID] = power;
 
     for (uint32 i = 1; i < sTaxiPathStore.GetNumRows(); ++i)
         if (TaxiPathEntry const* entry = sTaxiPathStore.LookupEntry(i))
@@ -444,6 +452,15 @@ DB2Manager::ItemBonusList DB2Manager::GetItemBonusList(uint32 bonusListId) const
         return itr->second;
 
     return ItemBonusList();
+}
+
+MountEntry const* DB2Manager::GetMount(uint32 spellId) const
+{
+    auto itr = _mountsBySpellId.find(spellId);
+    if (itr != _mountsBySpellId.end())
+        return itr->second;
+
+    return nullptr;
 }
 
 std::set<uint32> DB2Manager::GetPhasesForGroup(uint32 group) const

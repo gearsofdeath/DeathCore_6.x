@@ -584,7 +584,7 @@ void WorldSession::LogoutPlayer(bool save)
 
         //! Broadcast a logout message to the player's friends
         sSocialMgr->SendFriendStatus(_player, FRIEND_OFFLINE, _player->GetGUID(), true);
-        sSocialMgr->RemovePlayerSocial(_player->GetGUID());
+        _player->RemoveSocial();
 
         //! Call script hook before deletion
         sScriptMgr->OnPlayerLogout(_player);
@@ -640,7 +640,7 @@ void WorldSession::KickPlayer()
     }
 }
 
-void WorldSession::SendNotification(const char *format, ...)
+void WorldSession::SendNotification(char const* format, ...)
 {
     if (format)
     {
@@ -660,15 +660,15 @@ void WorldSession::SendNotification(const char *format, ...)
     }
 }
 
-void WorldSession::SendNotification(uint32 string_id, ...)
+void WorldSession::SendNotification(uint32 stringId, ...)
 {
-    char const* format = GetTrinityString(string_id);
+    char const* format = GetTrinityString(stringId);
     if (format)
     {
         va_list ap;
         char szStr[1024];
         szStr[0] = '\0';
-        va_start(ap, string_id);
+        va_start(ap, stringId);
         vsnprintf(szStr, 1024, format, ap);
         va_end(ap);
 
@@ -701,12 +701,6 @@ void WorldSession::Handle_EarlyProccess(WorldPacket& recvPacket)
 void WorldSession::Handle_ServerSide(WorldPacket& recvPacket)
 {
     TC_LOG_ERROR("network.opcode", "Received server-side opcode %s from %s"
-        , GetOpcodeNameForLogging(static_cast<OpcodeClient>(recvPacket.GetOpcode())).c_str(), GetPlayerInfo().c_str());
-}
-
-void WorldSession::Handle_Deprecated(WorldPacket& recvPacket)
-{
-    TC_LOG_ERROR("network.opcode", "Received deprecated opcode %s from %s"
         , GetOpcodeNameForLogging(static_cast<OpcodeClient>(recvPacket.GetOpcode())).c_str(), GetPlayerInfo().c_str());
 }
 
@@ -1213,7 +1207,7 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
         //case CMSG_CORPSE_MAP_POSITION_QUERY:            //   0               1
         case CMSG_MOVE_TIME_SKIPPED:                    //   0               1
         //case MSG_QUERY_NEXT_MAIL_TIME:                  //   0               1
-        case CMSG_SETSHEATHED:                          //   0               1
+        case CMSG_SET_SHEATHED:                         //   0               1
         //case MSG_RAID_TARGET_UPDATE:                    //   0               1
         case CMSG_LOGOUT_REQUEST:                       //   0               1
         //case CMSG_PET_RENAME:                           //   0               1
@@ -1285,7 +1279,7 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
         case CMSG_MESSAGECHAT_YELL:                     //   0               3.5
         case CMSG_INSPECT:                              //   0               3.5
         //case CMSG_AREA_SPIRIT_HEALER_QUERY:             // not profiled
-        case CMSG_STANDSTATECHANGE:                     // not profiled
+        case CMSG_STAND_STATE_CHANGE:                     // not profiled
         case CMSG_RANDOM_ROLL:                          // not profiled
         case CMSG_TIME_SYNC_RESPONSE:                   // not profiled
         case CMSG_TRAINER_BUY_SPELL:                    // not profiled
@@ -1299,7 +1293,7 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
         case CMSG_QUESTGIVER_ACCEPT_QUEST:              //   0               4
         //case CMSG_QUESTLOG_REMOVE_QUEST:                //   0               4
         case CMSG_QUESTGIVER_CHOOSE_REWARD:             //   0               4
-        //case CMSG_CONTACT_LIST:                         //   0               5
+        //case CMSG_SEND_CONTACT_LIST:                    //   0               5
         case CMSG_AUTOBANK_ITEM:                        //   0               6
         case CMSG_AUTOSTORE_BANK_ITEM:                  //   0               6
         case CMSG_WHO:                                  //   0               7
@@ -1371,10 +1365,10 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
 
         case CMSG_CHAR_CREATE:                          //   7               5         3 async db queries
         case CMSG_CHAR_ENUM:                            //  22               3         2 async db queries
-        //case CMSG_GMTICKET_CREATE:                      //   1              25         1 async db query
-        //case CMSG_GMTICKET_UPDATETEXT:                  //   0              15         1 async db query
-        //case CMSG_GMTICKET_DELETETICKET:                //   1              25         1 async db query
-        //case CMSG_GMRESPONSE_RESOLVE:                   //   1              25         1 async db query
+        //case CMSG_GM_TICKET_CREATE:                     //   1              25         1 async db query
+        //case CMSG_GM_TICKET_UPDATETEXT:                 //   0              15         1 async db query
+        //case CMSG_GM_TICKET_DELETETICKET:               //   1              25         1 async db query
+        //case CMSG_GM_TICKET_RESPONSE_RESOLVE:           //   1              25         1 async db query
         //case CMSG_CALENDAR_UPDATE_EVENT:                // not profiled
         //case CMSG_CALENDAR_REMOVE_EVENT:                // not profiled
         //case CMSG_CALENDAR_COPY_EVENT:                  // not profiled
@@ -1391,23 +1385,23 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
         //case CMSG_ARENA_TEAM_REMOVE:                    // not profiled
         //case CMSG_ARENA_TEAM_LEADER:                    // not profiled
         case CMSG_LOOT_METHOD:                          // not profiled
-        case CMSG_GUILD_INVITE_BY_NAME:                   // not profiled
-        //case CMSG_GUILD_ACCEPT:                         // not profiled
-        case CMSG_GUILD_DECLINE:                        // not profiled
+        case CMSG_GUILD_INVITE_BY_NAME:                 // not profiled
+        case CMSG_ACCEPT_GUILD_INVITE:                  // not profiled
+        case CMSG_GUILD_DECLINE_INVITATION:             // not profiled
         case CMSG_GUILD_LEAVE:                          // not profiled
-        case CMSG_GUILD_DISBAND:                        // not profiled
+        case CMSG_GUILD_DELETE:                         // not profiled
         case CMSG_GUILD_SET_GUILD_MASTER:               // not profiled
-        //case CMSG_GUILD_MOTD:                           // not profiled
+        case CMSG_GUILD_UPDATE_MOTD_TEXT:               // not profiled
         case CMSG_GUILD_SET_RANK_PERMISSIONS:           // not profiled
         case CMSG_GUILD_ADD_RANK:                       // not profiled
         case CMSG_GUILD_DELETE_RANK:                    // not profiled
-        case CMSG_GUILD_UPDATE_INFO_TEXT:                 // not profiled
+        case CMSG_GUILD_UPDATE_INFO_TEXT:               // not profiled
         case CMSG_GUILD_BANK_DEPOSIT_MONEY:             // not profiled
-        //case CMSG_GUILD_BANK_WITHDRAW_MONEY:            // not profiled
+        case CMSG_GUILD_BANK_WITHDRAW_MONEY:            // not profiled
         case CMSG_GUILD_BANK_BUY_TAB:                   // not profiled
-        //case CMSG_GUILD_BANK_UPDATE_TAB:                // not profiled
+        case CMSG_GUILD_BANK_UPDATE_TAB:                // not profiled
         //case CMSG_SET_GUILD_BANK_TEXT:                  // not profiled
-        //case CMSG_SAVE_GUILD_EMBLEM:                     // not profiled
+        case CMSG_SAVE_GUILD_EMBLEM:                    // not profiled
         //case MSG_PETITION_RENAME:                       // not profiled
         //case MSG_TALENT_WIPE_CONFIRM:                   // not profiled
         case CMSG_SET_DUNGEON_DIFFICULTY:               // not profiled
@@ -1419,7 +1413,7 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
             break;
         }
 
-        case CMSG_ITEM_REFUND_INFO:                     // not profiled
+        case CMSG_GET_ITEM_PURCHASE_DATA:               // not profiled
         {
             maxPacketCounterAllowed = PLAYER_SLOTS_COUNT;
             break;

@@ -162,6 +162,10 @@ bool LoginQueryHolder::Initialize()
     stmt->setUInt64(0, lowGuid);
     res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_SPELL_COOLDOWNS, stmt);
 
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_SPELL_CHARGES);
+    stmt->setUInt64(0, lowGuid);
+    res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_SPELL_CHARGES, stmt);
+
     if (sWorld->getBoolConfig(CONFIG_DECLINED_NAMES_USED))
     {
         stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_DECLINEDNAMES);
@@ -314,7 +318,7 @@ void WorldSession::HandleCharUndeleteEnum(PreparedQueryResult result)
     SendPacket(charEnum.Write());
 }
 
-void WorldSession::HandleCharUndeleteEnumOpcode(WorldPacket& /*recvData*/)
+void WorldSession::HandleCharUndeleteEnumOpcode(WorldPackets::Character::EnumCharacters& /*enumCharacters*/)
 {
     /// get all the data necessary for loading all undeleted characters (along with their pets) on the account
     PreparedStatement* stmt = nullptr;
@@ -867,24 +871,7 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder* holder)
 
     SendPacket(accountDataTimes.Write());
 
-    /// Send FeatureSystemStatus
-    {
-        WorldPackets::System::FeatureSystemStatus features;
-
-        /// START OF DUMMY VALUES
-        features.ComplaintStatus = 2;
-        features.ScrollOfResurrectionRequestsRemaining = 1;
-        features.ScrollOfResurrectionMaxRequestsPerDay = 1;
-        features.CfgRealmID = 2;
-        features.CfgRealmRecID = 0;
-        features.VoiceEnabled = false;
-        /// END OF DUMMY VALUES
-
-        features.CharUndeleteEnabled = sWorld->getBoolConfig(CONFIG_FEATURE_SYSTEM_CHARACTER_UNDELETE_ENABLED);
-        features.BpayStoreEnabled    = sWorld->getBoolConfig(CONFIG_FEATURE_SYSTEM_BPAY_STORE_ENABLED);
-
-        SendPacket(features.Write());
-    }
+    SendFeatureSystemStatus();
 
     // Send MOTD
     {
@@ -1091,10 +1078,36 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder* holder)
     delete holder;
 }
 
+void WorldSession::SendFeatureSystemStatus()
+{
+    WorldPackets::System::FeatureSystemStatus features;
+
+    /// START OF DUMMY VALUES
+    features.ComplaintStatus = 2;
+    features.ScrollOfResurrectionRequestsRemaining = 1;
+    features.ScrollOfResurrectionMaxRequestsPerDay = 1;
+    features.CfgRealmID = 2;
+    features.CfgRealmRecID = 0;
+    features.VoiceEnabled = false;
+    features.BrowserEnabled = false; // Has to be false, otherwise client will crash if "Customer Support" is opened
+
+    features.EuropaTicketSystemStatus.HasValue = true;
+    features.EuropaTicketSystemStatus.Value.ThrottleState.MaxTries = 5;
+    features.EuropaTicketSystemStatus.Value.ThrottleState.PerMilliseconds = 5;
+    features.EuropaTicketSystemStatus.Value.ThrottleState.TryCount = 0;
+    features.EuropaTicketSystemStatus.Value.ThrottleState.LastResetTimeBeforeNow = time(nullptr) - 5000;
+    /// END OF DUMMY VALUES
+
+    features.EuropaTicketSystemStatus.Value.SubmitBugEnabled = sWorld->getBoolConfig(CONFIG_TICKET_SUBMIT_BUG);
+    features.EuropaTicketSystemStatus.Value.TicketSystemEnabled = sWorld->getBoolConfig(CONFIG_TICKET_SUBMIT_TICKET);
+    features.CharUndeleteEnabled = sWorld->getBoolConfig(CONFIG_FEATURE_SYSTEM_CHARACTER_UNDELETE_ENABLED);
+    features.BpayStoreEnabled = sWorld->getBoolConfig(CONFIG_FEATURE_SYSTEM_BPAY_STORE_ENABLED);
+
+    SendPacket(features.Write());
+}
+
 void WorldSession::HandleSetFactionAtWar(WorldPacket& recvData)
 {
-    TC_LOG_DEBUG("network", "WORLD: Received CMSG_SET_FACTION_AT_WAR");
-
     uint32 repListID;
     uint8  flag;
 
@@ -1369,7 +1382,7 @@ void WorldSession::HandleAlterAppearance(WorldPacket& recvData)
         return;
     }
 
-    if (_player->getStandState() != UNIT_STAND_STATE_SIT_LOW_CHAIR + go->GetGOInfo()->barberChair.chairheight)
+    if (_player->GetStandState() != UNIT_STAND_STATE_SIT_LOW_CHAIR + go->GetGOInfo()->barberChair.chairheight)
     {
         SendBarberShopResult(BARBER_SHOP_RESULT_NOT_ON_CHAIR);
         return;
@@ -1391,15 +1404,15 @@ void WorldSession::HandleAlterAppearance(WorldPacket& recvData)
     _player->ModifyMoney(-int64(cost));                     // it isn't free
     _player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_GOLD_SPENT_AT_BARBER, cost);
 
-    _player->SetByteValue(PLAYER_BYTES, 2, uint8(bs_hair->Data));
-    _player->SetByteValue(PLAYER_BYTES, 3, uint8(Color));
-    _player->SetByteValue(PLAYER_BYTES_2, 0, uint8(bs_facialHair->Data));
+    _player->SetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_STYLE_ID, uint8(bs_hair->Data));
+    _player->SetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_COLOR_ID, uint8(Color));
+    _player->SetByteValue(PLAYER_BYTES_2, PLAYER_BYTES_2_OFFSET_FACIAL_STYLE, uint8(bs_facialHair->Data));
     if (bs_skinColor)
-        _player->SetByteValue(PLAYER_BYTES, 0, uint8(bs_skinColor->Data));
+        _player->SetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_SKIN_ID, uint8(bs_skinColor->Data));
 
     _player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_VISIT_BARBER_SHOP, 1);
 
-    _player->SetStandState(0);                              // stand up
+    _player->SetStandState(UNIT_STAND_STATE_STAND);
 }
 
 void WorldSession::HandleRemoveGlyph(WorldPacket& recvData)
@@ -1638,7 +1651,7 @@ void WorldSession::HandleEquipmentSetUse(WorldPacket& recvData)
         _player->SwapItem(item->GetPos(), dstpos);
     }
 
-    WorldPacket data(SMSG_EQUIPMENT_SET_USE_RESULT, 1);
+    WorldPacket data(SMSG_USE_EQUIPMENT_SET_RESULT, 1);
     data << uint8(0);                                       // 4 - equipment swap failed - inventory is full
     SendPacket(&data);
 }
@@ -2290,7 +2303,7 @@ void WorldSession::HandleOpeningCinematic(WorldPacket& /*recvData*/)
     }
 }
 
-void WorldSession::HandleUndeleteCooldownStatusQuery(WorldPacket& /*recvData*/)
+void WorldSession::HandleGetUndeleteCooldownStatus(WorldPackets::Character::GetUndeleteCooldownStatus& /*getCooldown*/)
 {
     /// empty result to force wait
     PreparedQueryResultPromise result;

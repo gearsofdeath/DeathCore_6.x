@@ -814,7 +814,7 @@ public:
 
                 SpellInfo const* learnSpellInfo = effect ? sSpellMgr->GetSpellInfo(effect->TriggerSpell) : NULL;
 
-                bool talent = (GetTalentBySpellID(id) != nullptr);
+                bool talent = spellInfo->HasAttribute(SPELL_ATTR0_CU_IS_TALENT);
                 bool passive = spellInfo->IsPassive();
                 bool active = target && target->HasAura(id);
 
@@ -886,7 +886,7 @@ public:
 
                 SpellInfo const* learnSpellInfo = effect ? sSpellMgr->GetSpellInfo(effect->TriggerSpell) : NULL;
 
-                bool talent = (GetTalentBySpellID(id) != nullptr);
+                bool talent = spellInfo->HasAttribute(SPELL_ATTR0_CU_IS_TALENT);
                 bool passive = spellInfo->IsPassive();
                 bool active = target && target->HasAura(id);
 
@@ -946,6 +946,7 @@ public:
         bool found = false;
         uint32 count = 0;
         uint32 maxResults = sWorld->getIntConfig(CONFIG_MAX_RESULTS_LOOKUP_COMMANDS);
+        int32 locale = handler->GetSessionDbcLocale();
 
         // Search in TaxiNodes.dbc
         for (uint32 id = 0; id < sTaxiNodesStore.GetNumRows(); id++)
@@ -953,7 +954,7 @@ public:
             TaxiNodesEntry const* nodeEntry = sTaxiNodesStore.LookupEntry(id);
             if (nodeEntry)
             {
-                std::string name = nodeEntry->Name_lang;
+                std::string name = nodeEntry->Name_lang->Str[locale];
                 if (name.empty())
                     continue;
 

@@ -31,11 +31,21 @@ WorldPacket const* WorldPackets::Combat::AttackStart::Write()
     return &_worldPacket;
 }
 
+WorldPackets::Combat::SAttackStop::SAttackStop(Unit const* attacker, Unit const* victim) : ServerPacket(SMSG_ATTACKSTOP, 16 + 16 + 1)
+{
+    Attacker = attacker->GetGUID();
+    if (victim)
+    {
+        Victim = victim->GetGUID();
+        NowDead = victim->isDead();
+    }
+}
+
 WorldPacket const* WorldPackets::Combat::SAttackStop::Write()
 {
     _worldPacket << Attacker;
     _worldPacket << Victim;
-    _worldPacket.WriteBit(Dead);
+    _worldPacket.WriteBit(NowDead);
     _worldPacket.FlushBits();
 
     return &_worldPacket;
@@ -139,4 +149,30 @@ WorldPacket const* WorldPackets::Combat::AttackerStateUpdate::Write()
     _worldPacket.put<int32>(pos - sizeof(int32), _worldPacket.wpos() - pos);
 
     return &_worldPacket;
+}
+
+WorldPacket const* WorldPackets::Combat::AttackSwingError::Write()
+{
+    _worldPacket.WriteBits(Reason, 2);
+    _worldPacket.FlushBits();
+    return &_worldPacket;
+}
+
+WorldPacket const* WorldPackets::Combat::PowerUpdate::Write()
+{
+    _worldPacket << Guid;
+    _worldPacket << uint32(Powers.size());
+    for (PowerUpdatePower const& power : Powers)
+    {
+        _worldPacket << power.Power;
+        _worldPacket << power.PowerType;
+    }
+
+    return &_worldPacket;
+}
+
+void WorldPackets::Combat::SetSheathed::Read()
+{
+    _worldPacket >> CurrentSheathState;
+    Animate = _worldPacket.ReadBit();
 }

@@ -535,9 +535,10 @@ typedef std::map<uint32, SpellLearnSkillNode> SpellLearnSkillMap;
 
 struct SpellLearnSpellNode
 {
-    uint32 spell;
-    bool active;                                            // show in spellbook or not
-    bool autoLearned;
+    uint32 Spell;
+    uint32 OverridesSpell;
+    bool Active;                    // show in spellbook or not
+    bool AutoLearned;               // This marks the spell as automatically learned from another source that - will only be used for unlearning
 };
 
 typedef std::multimap<uint32, SpellLearnSpellNode> SpellLearnSpellMap;
@@ -676,7 +677,7 @@ class SpellMgr
         // SpellInfo object management
         SpellInfo const* GetSpellInfo(uint32 spellId) const { return spellId < GetSpellInfoStoreSize() ?  mSpellInfoMap[spellId] : NULL; }
         // Use this only with 100% valid spellIds
-        SpellInfo const* EnsureSpellInfo(uint32 spellId) const
+        SpellInfo const* AssertSpellInfo(uint32 spellId) const
         {
             ASSERT(spellId < GetSpellInfoStoreSize());
             SpellInfo const* spellInfo = mSpellInfoMap[spellId];
@@ -695,7 +696,6 @@ class SpellMgr
 
         // Loading data at server startup
         void UnloadSpellInfoChains();
-        void LoadSpellTalentRanks();
         void LoadSpellRanks();
         void LoadSpellRequired();
         void LoadSpellLearnSkills();

@@ -20,11 +20,30 @@
 
 #include "Packet.h"
 #include "Item.h"
+#include "PacketUtilities.h"
 
 namespace WorldPackets
 {
     namespace Item
     {
+        struct ItemBonusInstanceData
+        {
+            uint8 Context = 0;
+            std::vector<int32> BonusListIDs;
+        };
+
+        struct ItemInstance
+        {
+            void Initalize(::Item const* item);
+            void Initalize(::LootItem const& lootItem);
+
+            uint32 ItemID = 0;
+            uint32 RandomPropertiesSeed = 0;
+            uint32 RandomPropertiesID = 0;
+            Optional<ItemBonusInstanceData> ItemBonus;
+            Optional<CompactArray<int32>> Modifications;
+        };
+
         class BuyBackItem final : public ClientPacket
         {
         public:
@@ -36,10 +55,51 @@ namespace WorldPackets
             uint32 Slot = 0;
         };
 
-        class ItemRefundInfo final : public ClientPacket
+        class BuyItem final : public ClientPacket
         {
         public:
-            ItemRefundInfo(WorldPacket&& packet) : ClientPacket(CMSG_ITEM_REFUND_INFO, std::move(packet)) { }
+            BuyItem(WorldPacket&& packet) : ClientPacket(CMSG_BUY_ITEM, std::move(packet)) { }
+
+            void Read() override;
+
+            ObjectGuid VendorGUID;
+            ItemInstance Item;
+            uint32 Muid = 0u;
+            uint32 Slot = 0u;
+            ItemVendorType ItemType = ITEM_VENDOR_TYPE_NONE;
+            int32 Quantity = 0;
+            ObjectGuid ContainerGUID;
+        };
+
+        class BuySucceeded final : ServerPacket
+        {
+        public:
+            BuySucceeded() : ServerPacket(SMSG_BUY_SUCCEEDED, 16 + 4 + 4 + 4 + 4) { }
+
+            WorldPacket const* Write() override;
+
+            ObjectGuid VendorGUID;
+            uint32 Muid = 0u;
+            uint32 QuantityBought = 0u;
+            int32 NewQuantity = 0;
+        };
+
+        class BuyFailed final : ServerPacket
+        {
+        public:
+            BuyFailed() : ServerPacket(SMSG_BUY_FAILED, 16 + 4 + 1) { }
+
+            WorldPacket const* Write() override;
+
+            ObjectGuid VendorGUID;
+            uint32 Muid = 0u;
+            BuyResult Reason = BUY_ERR_CANT_FIND_ITEM;
+        };
+
+        class GetItemPurchaseData final : public ClientPacket
+        {
+        public:
+            GetItemPurchaseData(WorldPacket&& packet) : ClientPacket(CMSG_GET_ITEM_PURCHASE_DATA, std::move(packet)) { }
 
             void Read() override;
 
@@ -90,21 +150,6 @@ namespace WorldPackets
 
             uint32 ProficiencyMask = 0;
             uint8 ProficiencyClass = 0;
-        };
-
-        struct ItemBonusInstanceData
-        {
-            uint8 Context                   = 0;
-            std::vector<int32> BonusListIDs;
-        };
-
-        struct ItemInstance
-        {
-            uint32 ItemID                   = 0;
-            uint32 RandomPropertiesSeed     = 0;
-            uint32 RandomPropertiesID       = 0;
-            Optional<ItemBonusInstanceData> ItemBonus;
-            std::vector<int32> Modifications;
         };
 
         struct InvUpdate
@@ -188,6 +233,19 @@ namespace WorldPackets
             uint8 PackSlot = 0;
         };
 
+        class AutoStoreBagItem final : public ClientPacket
+        {
+        public:
+            AutoStoreBagItem(WorldPacket&& packet) : ClientPacket(CMSG_AUTOSTORE_BAG_ITEM, std::move(packet)) { }
+
+            void Read() override;
+
+            uint8 ContainerSlotB = 0;
+            InvUpdate Inv;
+            uint8 ContainerSlotA = 0;
+            uint8 SlotA = 0;
+        };
+
         class DestroyItem final : public ClientPacket
         {
         public:
@@ -205,6 +263,8 @@ namespace WorldPackets
 }
 
 ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Item::ItemBonusInstanceData const& itemBonusInstanceData);
+ByteBuffer& operator>>(ByteBuffer& data, WorldPackets::Item::ItemBonusInstanceData& itemBonusInstanceData);
 ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Item::ItemInstance const& itemInstance);
+ByteBuffer& operator>>(ByteBuffer& data, WorldPackets::Item::ItemInstance& itemInstance);
 
 #endif // ItemPackets_h__

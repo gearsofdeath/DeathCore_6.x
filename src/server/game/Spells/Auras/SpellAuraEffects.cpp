@@ -41,6 +41,8 @@
 #include "WeatherMgr.h"
 #include "Pet.h"
 #include "ReputationMgr.h"
+#include "MiscPackets.h"
+#include "SpellHistory.h"
 
 class Aura;
 //
@@ -469,7 +471,7 @@ pAuraEffectHandler AuraEffectHandler[TOTAL_AURAS]=
     &AuraEffect::HandleNULL,                                      //408
     &AuraEffect::HandleNULL,                                      //409
     &AuraEffect::HandleNULL,                                      //410
-    &AuraEffect::HandleNULL,                                      //411 SPELL_AURA_MOD_CHARGES
+    &AuraEffect::HandleNoImmediateEffect,                         //411 SPELL_AURA_MOD_MAX_CHARGES implemented in SpellHistory::GetMaxCharges
     &AuraEffect::HandleNULL,                                      //412
     &AuraEffect::HandleNULL,                                      //413
     &AuraEffect::HandleNULL,                                      //414
@@ -509,19 +511,19 @@ pAuraEffectHandler AuraEffectHandler[TOTAL_AURAS]=
     &AuraEffect::HandleNULL,                                      //448
     &AuraEffect::HandleNULL,                                      //449
     &AuraEffect::HandleNULL,                                      //450
-    &AuraEffect::HandleNULL,                                      //451
+    &AuraEffect::HandleNULL,                                      //451 SPELL_AURA_OVERRIDE_PET_SPECS
     &AuraEffect::HandleNULL,                                      //452
-    &AuraEffect::HandleNULL,                                      //453
-    &AuraEffect::HandleNULL,                                      //454
+    &AuraEffect::HandleNoImmediateEffect,                         //453 SPELL_AURA_CHARGE_RECOVERY_MOD implemented in SpellHistory::GetChargeRecoveryTime
+    &AuraEffect::HandleNoImmediateEffect,                         //454 SPELL_AURA_CHARGE_RECOVERY_MULTIPLIER implemented in SpellHistory::GetChargeRecoveryTime
     &AuraEffect::HandleNULL,                                      //455
-    &AuraEffect::HandleNULL,                                      //456
-    &AuraEffect::HandleNULL,                                      //457
-    &AuraEffect::HandleNULL,                                      //458
+    &AuraEffect::HandleNoImmediateEffect,                         //456 SPELL_AURA_CHARGE_RECOVERY_AFFECTED_BY_HASTE implemented in SpellHistory::GetChargeRecoveryTime
+    &AuraEffect::HandleNoImmediateEffect,                         //457 SPELL_AURA_CHARGE_RECOVERY_AFFECTED_BY_HASTE_REGEN implemented in SpellHistory::GetChargeRecoveryTime
+    &AuraEffect::HandleNULL,                                      //458 SPELL_AURA_IGNORE_DUAL_WIELD_HIT_PENALTY
     &AuraEffect::HandleNULL,                                      //459
     &AuraEffect::HandleNULL,                                      //460
     &AuraEffect::HandleNULL,                                      //461
     &AuraEffect::HandleNULL,                                      //462
-    &AuraEffect::HandleNULL,                                      //463
+    &AuraEffect::HandleNULL,                                      //463 SPELL_AURA_CRIT_RATING_AFFECTS_PARRY used by Riposte
     &AuraEffect::HandleNULL,                                      //464
     &AuraEffect::HandleNULL,                                      //465
     &AuraEffect::HandleNULL,                                      //466
@@ -664,12 +666,18 @@ int32 AuraEffect::CalculateAmount(Unit* caster)
             m_canBeRecalculated = false;
             break;
         case SPELL_AURA_MOUNTED:
-            if (MountCapabilityEntry const* mountCapability = GetBase()->GetUnitOwner()->GetMountCapability(uint32(GetMiscValueB())))
+        {
+            uint32 mountType = uint32(GetMiscValueB());
+            if (MountEntry const* mountEntry = sDB2Manager.GetMount(GetId()))
+                mountType = mountEntry->MountTypeId;
+
+            if (MountCapabilityEntry const* mountCapability = GetBase()->GetUnitOwner()->GetMountCapability(mountType))
             {
                 amount = mountCapability->ID;
                 m_canBeRecalculated = false;
             }
             break;
+        }
         case SPELL_AURA_MOD_RESISTANCE_EXCLUSIVE:
         {
             if (caster)
@@ -1320,15 +1328,13 @@ void AuraEffect::HandleShapeshiftBoosts(Unit* target, bool apply) const
         // Remove cooldown of spells triggered on stance change - they may share cooldown with stance spell
         if (spellId)
         {
-            if (target->GetTypeId() == TYPEID_PLAYER)
-                target->ToPlayer()->RemoveSpellCooldown(spellId);
+            target->GetSpellHistory()->ResetCooldown(spellId);
             target->CastSpell(target, spellId, true, NULL, this);
         }
 
         if (spellId2)
         {
-            if (target->GetTypeId() == TYPEID_PLAYER)
-                target->ToPlayer()->RemoveSpellCooldown(spellId2);
+            target->GetSpellHistory()->ResetCooldown(spellId2);
             target->CastSpell(target, spellId2, true, NULL, this);
         }
 
@@ -1509,7 +1515,7 @@ void AuraEffect::HandleModInvisibility(AuraApplication const* aurApp, uint8 mode
     {
         // apply glow vision
         if (target->GetTypeId() == TYPEID_PLAYER)
-            target->SetByteFlag(PLAYER_FIELD_BYTES2, 3, PLAYER_FIELD_BYTE2_INVISIBILITY_GLOW);
+            target->SetByteFlag(PLAYER_FIELD_BYTES2, PLAYER_FIELD_BYTES_2_OFFSET_AURA_VISION, PLAYER_FIELD_BYTE2_INVISIBILITY_GLOW);
 
         target->m_invisibility.AddFlag(type);
         target->m_invisibility.AddValue(type, GetAmount());
@@ -1521,7 +1527,7 @@ void AuraEffect::HandleModInvisibility(AuraApplication const* aurApp, uint8 mode
             // if not have different invisibility auras.
             // remove glow vision
             if (target->GetTypeId() == TYPEID_PLAYER)
-                target->RemoveByteFlag(PLAYER_FIELD_BYTES2, 3, PLAYER_FIELD_BYTE2_INVISIBILITY_GLOW);
+                target->RemoveByteFlag(PLAYER_FIELD_BYTES2, PLAYER_FIELD_BYTES_2_OFFSET_AURA_VISION, PLAYER_FIELD_BYTE2_INVISIBILITY_GLOW);
 
             target->m_invisibility.DelFlag(type);
         }
@@ -1593,7 +1599,7 @@ void AuraEffect::HandleModStealth(AuraApplication const* aurApp, uint8 mode, boo
 
         target->SetStandFlags(UNIT_STAND_FLAGS_CREEP);
         if (target->GetTypeId() == TYPEID_PLAYER)
-            target->SetByteFlag(PLAYER_FIELD_BYTES2, 3, PLAYER_FIELD_BYTE2_STEALTH);
+            target->SetByteFlag(PLAYER_FIELD_BYTES2, PLAYER_FIELD_BYTES_2_OFFSET_AURA_VISION, PLAYER_FIELD_BYTE2_STEALTH);
     }
     else
     {
@@ -1605,7 +1611,7 @@ void AuraEffect::HandleModStealth(AuraApplication const* aurApp, uint8 mode, boo
 
             target->RemoveStandFlags(UNIT_STAND_FLAGS_CREEP);
             if (target->GetTypeId() == TYPEID_PLAYER)
-                target->RemoveByteFlag(PLAYER_FIELD_BYTES2, 3, PLAYER_FIELD_BYTE2_STEALTH);
+                target->RemoveByteFlag(PLAYER_FIELD_BYTES2, PLAYER_FIELD_BYTES_2_OFFSET_AURA_VISION, PLAYER_FIELD_BYTE2_STEALTH);
         }
     }
 
@@ -2564,7 +2570,7 @@ void AuraEffect::HandleAuraTrackStealthed(AuraApplication const* aurApp, uint8 m
         if (target->HasAuraType(GetAuraType()))
             return;
     }
-    target->ApplyModFlag(PLAYER_FIELD_BYTES, PLAYER_FIELD_BYTE_TRACK_STEALTHED, apply);
+    target->ApplyModFlag(PLAYER_FIELD_LOCAL_FLAGS, PLAYER_LOCAL_FLAG_TRACK_STEALTHED, apply);
 }
 
 void AuraEffect::HandleAuraModStalked(AuraApplication const* aurApp, uint8 mode, bool apply) const
@@ -2660,21 +2666,23 @@ void AuraEffect::HandleAuraMounted(AuraApplication const* aurApp, uint8 mode, bo
         uint32 displayId = 0;
         uint32 vehicleId = 0;
 
-        // Festive Holiday Mount
-        if (target->HasAura(62061))
+        if (MountEntry const* mountEntry = sDB2Manager.GetMount(GetId()))
         {
-            if (GetBase()->HasEffectType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED))
-                creatureEntry = 24906;
-            else
-                creatureEntry = 15665;
+            displayId = mountEntry->DisplayId;
+            // TODO: CREATE TABLE mount_vehicle (mountId, vehicleCreatureId) for future mounts that are vehicles (new mounts no longer have proper data in MiscValue)
+            //if (MountVehicle const* mountVehicle = sObjectMgr->GetMountVehicle(mountEntry->Id))
+            //    creatureEntry = mountVehicle->VehicleCreatureId;
         }
 
         if (CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(creatureEntry))
         {
-            displayId = ObjectMgr::ChooseDisplayId(creatureInfo);
-            sObjectMgr->GetCreatureModelRandomGender(&displayId);
-
             vehicleId = creatureInfo->VehicleId;
+
+            if (!displayId || vehicleId)
+            {
+                displayId = ObjectMgr::ChooseDisplayId(creatureInfo);
+                sObjectMgr->GetCreatureModelRandomGender(&displayId);
+            }
 
             //some spell has one aura of mount and one of vehicle
             for (SpellEffectInfo const* effect : GetBase()->GetSpellEffectInfos())
@@ -4943,7 +4951,7 @@ void AuraEffect::HandleAuraDummy(AuraApplication const* aurApp, uint8 mode, bool
                     uint32 spellId = 24659;
                     if (apply && caster)
                     {
-                        SpellInfo const* spell = sSpellMgr->EnsureSpellInfo(spellId);
+                        SpellInfo const* spell = sSpellMgr->AssertSpellInfo(spellId);
 
                         for (uint32 i = 0; i < spell->StackAmount; ++i)
                             caster->CastSpell(target, spell->Id, true, NULL, NULL, GetCasterGUID());
@@ -4958,7 +4966,7 @@ void AuraEffect::HandleAuraDummy(AuraApplication const* aurApp, uint8 mode, bool
                     uint32 spellId = 24662;
                     if (apply && caster)
                     {
-                        SpellInfo const* spell = sSpellMgr->EnsureSpellInfo(spellId);
+                        SpellInfo const* spell = sSpellMgr->AssertSpellInfo(spellId);
                         for (uint32 i = 0; i < spell->StackAmount; ++i)
                             caster->CastSpell(target, spell->Id, true, NULL, NULL, GetCasterGUID());
                         break;
@@ -5018,29 +5026,6 @@ void AuraEffect::HandleAuraDummy(AuraApplication const* aurApp, uint8 mode, bool
                         // Play part 3
                         else
                             target->PlayDirectSound(14972, target->ToPlayer());
-                    }
-                    break;
-                case 62061: // Festive Holiday Mount
-                    if (target->HasAuraType(SPELL_AURA_MOUNTED))
-                    {
-                        uint32 creatureEntry = 0;
-                        if (apply)
-                        {
-                            if (target->HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED))
-                                creatureEntry = 24906;
-                            else
-                                creatureEntry = 15665;
-                        }
-                        else
-                            creatureEntry = target->GetAuraEffectsByType(SPELL_AURA_MOUNTED).front()->GetMiscValue();
-
-                        if (CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(creatureEntry))
-                        {
-                            uint32 displayID = ObjectMgr::ChooseDisplayId(creatureInfo);
-                            sObjectMgr->GetCreatureModelRandomGender(&displayID);
-
-                            target->SetUInt32Value(UNIT_FIELD_MOUNTDISPLAYID, displayID);
-                        }
                     }
                     break;
             }
@@ -5374,7 +5359,7 @@ void AuraEffect::HandleAuraOverrideSpells(AuraApplication const* aurApp, uint8 m
 
     if (apply)
     {
-        target->SetUInt16Value(PLAYER_FIELD_BYTES2, 0, overrideId);
+        target->SetUInt16Value(PLAYER_FIELD_BYTES2, PLAYER_BYTES_2_OVERRIDE_SPELLS_UINT16_OFFSET, overrideId);
         if (OverrideSpellDataEntry const* overrideSpells = sOverrideSpellDataStore.LookupEntry(overrideId))
             for (uint8 i = 0; i < MAX_OVERRIDE_SPELL; ++i)
                 if (uint32 spellId = overrideSpells->SpellID[i])
@@ -5382,7 +5367,7 @@ void AuraEffect::HandleAuraOverrideSpells(AuraApplication const* aurApp, uint8 m
     }
     else
     {
-        target->SetUInt16Value(PLAYER_FIELD_BYTES2, 0, 0);
+        target->SetUInt16Value(PLAYER_FIELD_BYTES2, PLAYER_BYTES_2_OVERRIDE_SPELLS_UINT16_OFFSET, 0);
         if (OverrideSpellDataEntry const* overrideSpells = sOverrideSpellDataStore.LookupEntry(overrideId))
             for (uint8 i = 0; i < MAX_OVERRIDE_SPELL; ++i)
                 if (uint32 spellId = overrideSpells->SpellID[i])
@@ -5431,9 +5416,9 @@ void AuraEffect::HandlePreventResurrection(AuraApplication const* aurApp, uint8 
         return;
 
     if (apply)
-        aurApp->GetTarget()->RemoveByteFlag(PLAYER_FIELD_BYTES, 0, PLAYER_FIELD_BYTE_RELEASE_TIMER);
+        aurApp->GetTarget()->RemoveFlag(PLAYER_FIELD_LOCAL_FLAGS, PLAYER_LOCAL_FLAG_RELEASE_TIMER);
     else if (!aurApp->GetTarget()->GetBaseMap()->Instanceable())
-        aurApp->GetTarget()->SetByteFlag(PLAYER_FIELD_BYTES, 0, PLAYER_FIELD_BYTE_RELEASE_TIMER);
+        aurApp->GetTarget()->SetFlag(PLAYER_FIELD_LOCAL_FLAGS, PLAYER_LOCAL_FLAG_RELEASE_TIMER);
 }
 
 void AuraEffect::HandleMastery(AuraApplication const* aurApp, uint8 mode, bool /*apply*/) const
@@ -6633,10 +6618,8 @@ void AuraEffect::HandleAuraForceWeather(AuraApplication const* aurApp, uint8 mod
 
     if (apply)
     {
-        WorldPacket data(SMSG_WEATHER, (4 + 4 + 1));
-
-        data << uint32(GetMiscValue()) << 1.0f << uint8(0);
-        target->GetSession()->SendPacket(&data);
+        WorldPackets::Misc::Weather weather(WeatherState(GetMiscValue()), 1.0f);
+        target->GetSession()->SendPacket(weather.Write());
     }
     else
     {

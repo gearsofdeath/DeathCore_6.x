@@ -77,6 +77,27 @@ namespace WorldPackets
             int32 GossipID = 0;
         };
 
+        class GossipSelectOption final : public ClientPacket
+        {
+        public:
+            GossipSelectOption(WorldPacket&& packet) : ClientPacket(CMSG_GOSSIP_SELECT_OPTION, std::move(packet)) { }
+
+            void Read() override;
+
+            ObjectGuid GossipUnit;
+            int32 GossipIndex = 0;
+            int32 GossipID = 0;
+            std::string PromotionCode;
+        };
+
+        class GossipComplete final : public ServerPacket
+        {
+        public:
+            GossipComplete() : ServerPacket(SMSG_GOSSIP_COMPLETE, 0) { }
+
+            WorldPacket const* Write() override { return &_worldPacket; }
+        };
+
         struct VendorItem
         {
             int32 MuID                      = 0;
@@ -136,6 +157,16 @@ namespace WorldPackets
             WorldPacket const* Write() override;
 
             ObjectGuid Guid;
+        };
+
+        class PlayerTabardVendorActivate final : public ServerPacket
+        {
+        public:
+            PlayerTabardVendorActivate() : ServerPacket(SMSG_TABARD_VENDOR_ACTIVATE, 16) { }
+
+            WorldPacket const* Write() override;
+
+            ObjectGuid Vendor;
         };
     }
 }

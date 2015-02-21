@@ -38,129 +38,71 @@
 #include "SpellPackets.h"
 #include "GameObjectPackets.h"
 
-void WorldSession::HandleClientCastFlags(WorldPacket& recvPacket, uint8 castFlags, SpellCastTargets& targets)
+void WorldSession::HandleUseItemOpcode(WorldPackets::Spells::UseItem& packet)
 {
-    // some spell cast packet including more data (for projectiles?)
-    if (castFlags & 0x02)
-    {
-        // not sure about these two
-        float elevation, speed;
-        recvPacket >> elevation;
-        recvPacket >> speed;
-
-        targets.SetElevation(elevation);
-        targets.SetSpeed(speed);
-
-        uint8 hasMovementData;
-        recvPacket >> hasMovementData;
-        //if (hasMovementData)
-        //    HandleMovementOpcodes(recvPacket);
-    }
-    else if (castFlags & 0x8)   // Archaeology
-    {
-        uint32 count, entry, usedCount;
-        uint8 type;
-        recvPacket >> count;
-        for (uint32 i = 0; i < count; ++i)
-        {
-            recvPacket >> type;
-            switch (type)
-            {
-                case 2: // Keystones
-                    recvPacket >> entry;        // Item id
-                    recvPacket >> usedCount;    // Item count
-                    break;
-                case 1: // Fragments
-                    recvPacket >> entry;        // Currency id
-                    recvPacket >> usedCount;    // Currency count
-                    break;
-            }
-        }
-    }
-}
-
-void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
-{
-    /// @todo add targets.read() check
-    Player* pUser = _player;
+    Player* user = _player;
 
     // ignore for remote control state
-    if (pUser->m_mover != pUser)
+    if (user->m_mover != user)
         return;
 
-    uint8 bagIndex, slot, castFlags;
-    uint8 castCount;                                        // next cast if exists (single or not)
-    ObjectGuid itemGUID;
-    uint32 glyphIndex;                                      // something to do with glyphs?
-    uint32 spellId;                                         // cast spell id
-
-    recvPacket >> bagIndex >> slot >> castCount >> spellId >> itemGUID >> glyphIndex >> castFlags;
-
-    if (glyphIndex >= MAX_GLYPH_SLOT_INDEX)
+    Item* item = user->GetUseableItemByPos(packet.PackSlot, packet.Slot);
+    if (!item)
     {
-        pUser->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, NULL, NULL);
+        user->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, NULL, NULL);
         return;
     }
 
-    Item* pItem = pUser->GetUseableItemByPos(bagIndex, slot);
-    if (!pItem)
+    if (item->GetGUID() != packet.CastItem)
     {
-        pUser->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, NULL, NULL);
+        user->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, NULL, NULL);
         return;
     }
 
-    if (pItem->GetGUID() != itemGUID)
-    {
-        pUser->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, NULL, NULL);
-        return;
-    }
-
-    TC_LOG_DEBUG("network", "WORLD: CMSG_USE_ITEM packet, bagIndex: %u, slot: %u, castCount: %u, spellId: %u, Item: %u, glyphIndex: %u, data length = %i", bagIndex, slot, castCount, spellId, pItem->GetEntry(), glyphIndex, (uint32)recvPacket.size());
-
-    ItemTemplate const* proto = pItem->GetTemplate();
+    ItemTemplate const* proto = item->GetTemplate();
     if (!proto)
     {
-        pUser->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, pItem, NULL);
+        user->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, item, NULL);
         return;
     }
 
     // some item classes can be used only in equipped state
-    if (proto->GetInventoryType() != INVTYPE_NON_EQUIP && !pItem->IsEquipped())
+    if (proto->GetInventoryType() != INVTYPE_NON_EQUIP && !item->IsEquipped())
     {
-        pUser->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, pItem, NULL);
+        user->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, item, NULL);
         return;
     }
 
-    InventoryResult msg = pUser->CanUseItem(pItem);
+    InventoryResult msg = user->CanUseItem(item);
     if (msg != EQUIP_ERR_OK)
     {
-        pUser->SendEquipError(msg, pItem, NULL);
+        user->SendEquipError(msg, item, NULL);
         return;
     }
 
     // only allow conjured consumable, bandage, poisons (all should have the 2^21 item flag set in DB)
-    if (proto->GetClass() == ITEM_CLASS_CONSUMABLE && !(proto->GetFlags() & ITEM_PROTO_FLAG_USEABLE_IN_ARENA) && pUser->InArena())
+    if (proto->GetClass() == ITEM_CLASS_CONSUMABLE && !(proto->GetFlags() & ITEM_PROTO_FLAG_USEABLE_IN_ARENA) && user->InArena())
     {
-        pUser->SendEquipError(EQUIP_ERR_NOT_DURING_ARENA_MATCH, pItem, NULL);
+        user->SendEquipError(EQUIP_ERR_NOT_DURING_ARENA_MATCH, item, NULL);
         return;
     }
 
     // don't allow items banned in arena
-    if (proto->GetFlags() & ITEM_PROTO_FLAG_NOT_USEABLE_IN_ARENA && pUser->InArena())
+    if (proto->GetFlags() & ITEM_PROTO_FLAG_NOT_USEABLE_IN_ARENA && user->InArena())
     {
-        pUser->SendEquipError(EQUIP_ERR_NOT_DURING_ARENA_MATCH, pItem, NULL);
+        user->SendEquipError(EQUIP_ERR_NOT_DURING_ARENA_MATCH, item, NULL);
         return;
     }
 
-    if (pUser->IsInCombat())
+    if (user->IsInCombat())
     {
         for (uint32 i = 0; i < proto->Effects.size(); ++i)
         {
-            if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(proto->Effects[i].SpellID))
+            if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(proto->Effects[i]->SpellID))
             {
                 if (!spellInfo->CanBeUsedInCombat())
                 {
-                    pUser->SendEquipError(EQUIP_ERR_NOT_IN_COMBAT, pItem, NULL);
+                    user->SendEquipError(EQUIP_ERR_NOT_IN_COMBAT, item, NULL);
                     return;
                 }
             }
@@ -168,24 +110,22 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
     }
 
     // check also  BIND_WHEN_PICKED_UP and BIND_QUEST_ITEM for .additem or .additemset case by GM (not binded at adding to inventory)
-    if (pItem->GetTemplate()->GetBonding() == BIND_WHEN_USE || pItem->GetTemplate()->GetBonding() == BIND_WHEN_PICKED_UP || pItem->GetTemplate()->GetBonding() == BIND_QUEST_ITEM)
+    if (item->GetTemplate()->GetBonding() == BIND_WHEN_USE || item->GetTemplate()->GetBonding() == BIND_WHEN_PICKED_UP || item->GetTemplate()->GetBonding() == BIND_QUEST_ITEM)
     {
-        if (!pItem->IsSoulBound())
+        if (!item->IsSoulBound())
         {
-            pItem->SetState(ITEM_CHANGED, pUser);
-            pItem->SetBinding(true);
+            item->SetState(ITEM_CHANGED, user);
+            item->SetBinding(true);
         }
     }
 
-    SpellCastTargets targets;
-    targets.Read(recvPacket, pUser);
-    HandleClientCastFlags(recvPacket, castFlags, targets);
+    SpellCastTargets targets(user, packet.Cast);
 
     // Note: If script stop casting it must send appropriate data to client to prevent stuck item in gray state.
-    if (!sScriptMgr->OnItemUse(pUser, pItem, targets))
+    if (!sScriptMgr->OnItemUse(user, item, targets))
     {
         // no script or script not process request by self
-        pUser->CastItemUseSpell(pItem, targets, castCount, glyphIndex);
+        user->CastItemUseSpell(item, targets, packet.Cast.CastID, packet.Cast.Misc);
     }
 }
 
@@ -320,109 +260,53 @@ void WorldSession::HandleGameobjectReportUse(WorldPackets::GameObject::GameObjec
     _player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_USE_GAMEOBJECT, go->GetEntry());
 }
 
-void WorldSession::HandleCastSpellOpcode(WorldPackets::Spells::SpellCastRequest& castRequest)
+void WorldSession::HandleCastSpellOpcode(WorldPackets::Spells::CastSpell& cast)
 {
     // ignore for remote control state (for player case)
     Unit* mover = _player->m_mover;
     if (mover != _player && mover->GetTypeId() == TYPEID_PLAYER)
-    {
         return;
-    }
 
-    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(castRequest.SpellID);
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(cast.Cast.SpellID);
     if (!spellInfo)
     {
-        TC_LOG_ERROR("network", "WORLD: unknown spell id %u", castRequest.SpellID);
+        TC_LOG_ERROR("network", "WORLD: unknown spell id %u", cast.Cast.SpellID);
         return;
     }
 
     if (spellInfo->IsPassive())
-    {
         return;
-    }
 
     Unit* caster = mover;
-    if (caster->GetTypeId() == TYPEID_UNIT && !caster->ToCreature()->HasSpell(castRequest.SpellID))
+    if (caster->GetTypeId() == TYPEID_UNIT && !caster->ToCreature()->HasSpell(spellInfo->Id))
     {
         // If the vehicle creature does not have the spell but it allows the passenger to cast own spells
         // change caster to player and let him cast
         if (!_player->IsOnVehicle(caster) || spellInfo->CheckVehicle(_player) != SPELL_CAST_OK)
-        {
             return;
-        }
 
         caster = _player;
     }
 
-    if (caster->GetTypeId() == TYPEID_PLAYER && !caster->ToPlayer()->HasActiveSpell(castRequest.SpellID))
-    {
-        // not have spell in spellbook
+    // check known spell
+    if (caster->GetTypeId() == TYPEID_PLAYER && !caster->ToPlayer()->HasActiveSpell(spellInfo->Id))
         return;
-    }
 
-    if (Player* plr = caster->ToPlayer())
-    {
-        uint32 specId = plr->GetActiveTalentSpec();
-        if (specId)
-        {
-            if (sSpecializationOverrideSpellMap.find(specId) != sSpecializationOverrideSpellMap.end())
-            {
-                if (sSpecializationOverrideSpellMap[specId].find(castRequest.SpellID) != sSpecializationOverrideSpellMap[specId].end())
-                {
-                    SpellInfo const* newSpellInfo = sSpellMgr->GetSpellInfo(sSpecializationOverrideSpellMap[specId][castRequest.SpellID]);
-                    if (newSpellInfo)
-                    {
-                        if (newSpellInfo->SpellLevel <= caster->getLevel())
-                        {
-                            spellInfo = newSpellInfo;
-                            castRequest.SpellID = newSpellInfo->Id;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Unit::AuraEffectList swaps = mover->GetAuraEffectsByType(SPELL_AURA_OVERRIDE_ACTIONBAR_SPELLS);
-    Unit::AuraEffectList const& swaps2 = mover->GetAuraEffectsByType(SPELL_AURA_OVERRIDE_ACTIONBAR_SPELLS_2);
-    if (!swaps2.empty())
-        swaps.insert(swaps.end(), swaps2.begin(), swaps2.end());
-
-    if (!swaps.empty())
-    {
-        for (Unit::AuraEffectList::const_iterator itr = swaps.begin(); itr != swaps.end(); ++itr)
-        {
-            if ((*itr)->IsAffectingSpell(spellInfo))
-            {
-                if (SpellInfo const* newInfo = sSpellMgr->GetSpellInfo((*itr)->GetAmount()))
-                {
-                    spellInfo = newInfo;
-                    castRequest.SpellID = newInfo->Id;
-                }
-                break;
-            }
-        }
-    }
+    // Check possible spell cast overrides
+    spellInfo = caster->GetCastSpellInfo(spellInfo);
 
     // Client is resending autoshot cast opcode when other spell is cast during shoot rotation
     // Skip it to prevent "interrupt" message
     if (spellInfo->IsAutoRepeatRangedSpell() && caster->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL)
         && caster->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL)->m_spellInfo == spellInfo)
-    {
         return;
-    }
 
     // can't use our own spells when we're in possession of another unit,
     if (_player->isPossessing())
-    {
         return;
-    }
 
     // client provided targets
-    SpellCastTargets targets(caster, castRequest.TargetFlags, castRequest.UnitGuid, castRequest.ItemGuid, castRequest.SrcTransportGuid, castRequest.DstTransportGuid, castRequest.SrcPos, castRequest.DstPos, castRequest.Pitch, castRequest.Speed, castRequest.Name);
-
-
-    //HandleClientCastFlags(recvPacket, castFlags, targets);
+    SpellCastTargets targets(caster, cast.Cast);
 
     // auto-selection buff level base at target level (in spellInfo)
     if (targets.GetUnitTarget())
@@ -435,8 +319,8 @@ void WorldSession::HandleCastSpellOpcode(WorldPackets::Spells::SpellCastRequest&
     }
 
     Spell* spell = new Spell(caster, spellInfo, TRIGGERED_NONE, ObjectGuid::Empty, false);
-    spell->m_cast_count = castRequest.CastID;                       // set count of casts
-    spell->m_glyphIndex = castRequest.Misc; // 6.x Misc is just a guess
+    spell->m_cast_count = cast.Cast.CastID;                         // set count of casts
+    spell->m_misc.Data = cast.Cast.Misc;                            // 6.x Misc is just a guess
     spell->prepare(&targets);
 }
 
@@ -451,16 +335,9 @@ void WorldSession::HandleCancelCastOpcode(WorldPacket& recvPacket)
         _player->InterruptNonMeleeSpells(false, spellId, false);
 }
 
-void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
+void WorldSession::HandleCancelAuraOpcode(WorldPackets::Spells::CancelAura& cancelAura)
 {
-    uint32 spellId;
-    recvPacket >> spellId;
-
-    ObjectGuid guid;
-    recvPacket >> guid;
-
-
-    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(cancelAura.SpellID);
     if (!spellInfo)
         return;
 
@@ -472,7 +349,7 @@ void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
     if (spellInfo->IsChanneled())
     {
         if (Spell* curSpell = _player->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
-            if (curSpell->m_spellInfo->Id == spellId)
+            if (curSpell->GetSpellInfo()->Id == cancelAura.SpellID)
                 _player->InterruptSpell(CURRENT_CHANNELED_SPELL);
         return;
     }
@@ -483,8 +360,7 @@ void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
     if (!spellInfo->IsPositive() || spellInfo->IsPassive())
         return;
 
-    // maybe should only remove one buff when there are multiple?
-    _player->RemoveOwnedAura(spellId, ObjectGuid::Empty, 0, AURA_REMOVE_BY_CANCEL);
+    _player->RemoveOwnedAura(cancelAura.SpellID, cancelAura.CasterGUID, 0, AURA_REMOVE_BY_CANCEL);
 
     // If spell being removed is a resource tracker, see if player was tracking both (herbs / minerals) and remove the other
     if (sWorld->getBoolConfig(CONFIG_ALLOW_TRACK_BOTH_RESOURCES) && spellInfo->HasAura(DIFFICULTY_NONE, SPELL_AURA_TRACK_RESOURCES))
@@ -501,7 +377,7 @@ void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
 
             // Remove all auras related to resource tracking (only Herbs and Minerals in 3.3.5a)
             for (std::list<uint32>::iterator it = spellIDs.begin(); it != spellIDs.end(); ++it)
-                _player->RemoveOwnedAura(*it, ObjectGuid::Empty, 0, AURA_REMOVE_BY_CANCEL);
+                _player->RemoveOwnedAura(*it, cancelAura.CasterGUID, 0, AURA_REMOVE_BY_CANCEL);
         }
     }
 }
@@ -542,8 +418,6 @@ void WorldSession::HandlePetCancelAuraOpcode(WorldPacket& recvPacket)
     }
 
     pet->RemoveOwnedAura(spellId, ObjectGuid::Empty, 0, AURA_REMOVE_BY_CANCEL);
-
-    pet->AddCreatureSpellCooldown(spellId);
 }
 
 void WorldSession::HandleCancelGrowthAuraOpcode(WorldPacket& /*recvPacket*/) { }
@@ -627,7 +501,6 @@ void WorldSession::HandleSpellClick(WorldPacket& recvData)
 
 void WorldSession::HandleMirrorImageDataRequest(WorldPacket& recvData)
 {
-    TC_LOG_DEBUG("network", "WORLD: CMSG_GET_MIRRORIMAGE_DATA");
     ObjectGuid guid;
     recvData >> guid;
     recvData.read_skip<uint32>(); // DisplayId ?
@@ -645,7 +518,7 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPacket& recvData)
     if (!creator)
         return;
 
-    WorldPacket data(SMSG_MIRRORIMAGE_DATA, 68);
+    WorldPacket data(SMSG_MIRROR_IMAGE_COMPONENTED_DATA, 68);
     data << guid;
     data << uint32(creator->GetDisplayId());
     data << uint8(creator->getRace());
@@ -660,11 +533,11 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPacket& recvData)
         if (ObjectGuid::LowType guildId = player->GetGuildId())
             guild = sGuildMgr->GetGuildById(guildId);
 
-        data << uint8(player->GetByteValue(PLAYER_BYTES, 0));   // skin
-        data << uint8(player->GetByteValue(PLAYER_BYTES, 1));   // face
-        data << uint8(player->GetByteValue(PLAYER_BYTES, 2));   // hair
-        data << uint8(player->GetByteValue(PLAYER_BYTES, 3));   // haircolor
-        data << uint8(player->GetByteValue(PLAYER_BYTES_2, 0)); // facialhair
+        data << uint8(player->GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_SKIN_ID));
+        data << uint8(player->GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_FACE_ID));
+        data << uint8(player->GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_STYLE_ID));
+        data << uint8(player->GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_COLOR_ID));
+        data << uint8(player->GetByteValue(PLAYER_BYTES_2, PLAYER_BYTES_2_OFFSET_FACIAL_STYLE));
         data << (guild ? guild->GetGUID() : ObjectGuid::Empty);
 
         static EquipmentSlots const itemSlots[] =

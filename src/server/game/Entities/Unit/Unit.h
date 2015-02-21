@@ -97,7 +97,7 @@ enum SpellModOp
     SPELLMOD_COOLDOWN               = 11,
     SPELLMOD_EFFECT2                = 12,
     SPELLMOD_IGNORE_ARMOR           = 13,
-    SPELLMOD_COST                   = 14,
+    SPELLMOD_COST                   = 14, // Used when SpellPowerEntry::PowerIndex == 0
     SPELLMOD_CRIT_DAMAGE_BONUS      = 15,
     SPELLMOD_RESIST_MISS_CHANCE     = 16,
     SPELLMOD_JUMP_TARGETS           = 17,
@@ -113,10 +113,16 @@ enum SpellModOp
     SPELLMOD_VALUE_MULTIPLIER       = 27,
     SPELLMOD_RESIST_DISPEL_CHANCE   = 28,
     SPELLMOD_CRIT_DAMAGE_BONUS_2    = 29, //one not used spell
-    SPELLMOD_SPELL_COST_REFUND_ON_FAIL = 30
+    SPELLMOD_SPELL_COST_REFUND_ON_FAIL = 30,
+    SPELLMOD_STACK_AMOUNT           = 31, // has no effect on tooltip parsing
+    SPELLMOD_EFFECT4                = 32,
+    SPELLMOD_EFFECT5                = 33,
+    SPELLMOD_SPELL_COST2            = 34, // Used when SpellPowerEntry::PowerIndex == 1
+    SPELLMOD_JUMP_DISTANCE          = 35,
+    SPELLMOD_STACK_AMOUNT2          = 37  // same as SPELLMOD_STACK_AMOUNT but affects tooltips
 };
 
-#define MAX_SPELLMOD 32
+#define MAX_SPELLMOD 38
 
 enum SpellValueMod
 {
@@ -391,6 +397,7 @@ class Creature;
 class Spell;
 class SpellInfo;
 class SpellEffectInfo;
+class SpellHistory;
 class DynamicObject;
 class GameObject;
 class Item;
@@ -978,8 +985,8 @@ public:
     uint32 GetSpellPhaseMask() const { return _spellPhaseMask; }
     uint32 GetHitMask() const { return _hitMask; }
 
-    SpellInfo const* GetSpellInfo() const { return NULL; }
-    SpellSchoolMask GetSchoolMask() const { return SPELL_SCHOOL_MASK_NONE; }
+    SpellInfo const* GetSpellInfo() const;
+    SpellSchoolMask GetSchoolMask() const;
 
     DamageInfo* GetDamageInfo() const { return _damageInfo; }
     HealInfo* GetHealInfo() const { return _healInfo; }
@@ -1099,30 +1106,6 @@ enum CurrentSpellTypes
 #define CURRENT_FIRST_NON_MELEE_SPELL 1
 #define CURRENT_MAX_SPELL             4
 
-struct GlobalCooldown
-{
-    explicit GlobalCooldown(uint32 _dur = 0, uint32 _time = 0) : duration(_dur), cast_time(_time) { }
-
-    uint32 duration;
-    uint32 cast_time;
-};
-
-typedef std::unordered_map<uint32 /*category*/, GlobalCooldown> GlobalCooldownList;
-
-class GlobalCooldownMgr                                     // Shared by Player and CharmInfo
-{
-public:
-    GlobalCooldownMgr() { }
-
-public:
-    bool HasGlobalCooldown(SpellInfo const* spellInfo) const;
-    void AddGlobalCooldown(SpellInfo const* spellInfo, uint32 gcd);
-    void CancelGlobalCooldown(SpellInfo const* spellInfo);
-
-private:
-    GlobalCooldownList m_GlobalCooldowns;
-};
-
 enum ActiveStates
 {
     ACT_PASSIVE  = 0x01,                                    // 0x01 - passive
@@ -1240,8 +1223,6 @@ struct CharmInfo
 
         CharmSpellInfo* GetCharmSpell(uint8 index) { return &(_charmspells[index]); }
 
-        GlobalCooldownMgr& GetGlobalCooldownMgr() { return m_GlobalCooldownMgr; }
-
         void SetIsCommandAttack(bool val);
         bool IsCommandAttack();
         void SetIsCommandFollow(bool val);
@@ -1274,8 +1255,6 @@ struct CharmInfo
         float _stayX;
         float _stayY;
         float _stayZ;
-
-        GlobalCooldownMgr m_GlobalCooldownMgr;
 };
 
 // for clearing special attacks
@@ -1305,16 +1284,6 @@ enum PlayerTotemType
     SUMMON_TYPE_TOTEM_WATER = 82,
     SUMMON_TYPE_TOTEM_AIR   = 83
 };
-
-/// Spell cooldown flags sent in SMSG_SPELL_COOLDOWN
-enum SpellCooldownFlags
-{
-    SPELL_COOLDOWN_FLAG_NONE                    = 0x0,
-    SPELL_COOLDOWN_FLAG_INCLUDE_GCD             = 0x1,  ///< Starts GCD in addition to normal cooldown specified in the packet
-    SPELL_COOLDOWN_FLAG_INCLUDE_EVENT_COOLDOWNS = 0x2   ///< Starts GCD for spells that should start their cooldown on events, requires SPELL_COOLDOWN_FLAG_INCLUDE_GCD set
-};
-
-typedef std::unordered_map<uint32, uint32> PacketCooldowns;
 
 // delay time next attack to prevent client attack animation problems
 #define ATTACK_DISPLAY_DELAY 200
@@ -1463,6 +1432,7 @@ class Unit : public WorldObject
         int32 GetPower(Powers power) const;
         int32 GetMinPower(Powers power) const { return power == POWER_ECLIPSE ? -100 : 0; }
         int32 GetMaxPower(Powers power) const;
+        float GetPowerPct(Powers power) const { return GetMaxPower(power) ? 100.f * GetPower(power) / GetMaxPower(power) : 0.0f; }
         int32 CountPctFromMaxPower(Powers power, int32 pct) const { return CalculatePct(GetMaxPower(power), pct); }
         void SetPower(Powers power, int32 val);
         void SetMaxPower(Powers power, int32 val);
@@ -1500,10 +1470,10 @@ class Unit : public WorldObject
         uint32 GetCreatureType() const;
         uint32 GetCreatureTypeMask() const;
 
-        uint8 getStandState() const { return GetByteValue(UNIT_FIELD_BYTES_1, 0); }
+        UnitStandStateType GetStandState() const { return UnitStandStateType(GetByteValue(UNIT_FIELD_BYTES_1, 0)); }
         bool IsSitState() const;
         bool IsStandState() const;
-        void SetStandState(uint8 state);
+        void SetStandState(UnitStandStateType state);
 
         void  SetStandFlags(uint8 flags) { SetByteFlag(UNIT_FIELD_BYTES_1, 2, flags); }
         void  RemoveStandFlags(uint8 flags) { RemoveByteFlag(UNIT_FIELD_BYTES_1, 2, flags); }
@@ -1651,8 +1621,6 @@ class Unit : public WorldObject
         Aura* AddAura(SpellInfo const* spellInfo, uint32 effMask, Unit* target);
         void SetAuraStack(uint32 spellId, Unit* target, uint32 stack);
         void SendPlaySpellVisualKit(uint32 id, uint32 unkParam);
-        void BuildCooldownPacket(WorldPacket& data, uint8 flags, uint32 spellId, uint32 cooldown);
-        void BuildCooldownPacket(WorldPacket& data, uint8 flags, PacketCooldowns const& cooldowns);
 
         void DeMorph();
 
@@ -1913,7 +1881,6 @@ class Unit : public WorldObject
         void SetChannelObjectGuid(ObjectGuid guid) { SetGuidValue(UNIT_FIELD_CHANNEL_OBJECT, guid); }
 
         void SetCurrentCastSpell(Spell* pSpell);
-        virtual void ProhibitSpellSchool(SpellSchoolMask /*idSchoolMask*/, uint32 /*unTimeMs*/) { }
         void InterruptSpell(CurrentSpellTypes spellType, bool withDelayed = true, bool withInstant = true);
         void FinishSpell(CurrentSpellTypes spellType, bool ok = true);
 
@@ -1930,6 +1897,10 @@ class Unit : public WorldObject
         Spell* GetCurrentSpell(uint32 spellType) const { return m_currentSpells[spellType]; }
         Spell* FindCurrentSpellBySpellId(uint32 spell_id) const;
         int32 GetCurrentSpellCastTime(uint32 spell_id) const;
+        virtual SpellInfo const* GetCastSpellInfo(SpellInfo const* spellInfo) const;
+
+        SpellHistory* GetSpellHistory() { return _spellHistory; }
+        SpellHistory const* GetSpellHistory() const { return _spellHistory; }
 
         ObjectGuid m_SummonSlot[MAX_SUMMON_SLOT];
         ObjectGuid m_ObjectSlot[MAX_GAMEOBJECT_SLOT];
@@ -2366,6 +2337,8 @@ class Unit : public WorldObject
         uint16 _aiAnimKitId;
         uint16 _movementAnimKitId;
         uint16 _meleeAnimKitId;
+
+        SpellHistory* _spellHistory;
 };
 
 namespace Trinity

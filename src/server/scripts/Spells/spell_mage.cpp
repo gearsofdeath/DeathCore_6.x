@@ -24,6 +24,7 @@
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellScript.h"
+#include "SpellHistory.h"
 #include "SpellAuraEffects.h"
 #include "Pet.h"
 #include "GridNotifiers.h"
@@ -326,22 +327,12 @@ class spell_mage_cold_snap : public SpellScriptLoader
 
             void HandleDummy(SpellEffIndex /*effIndex*/)
             {
-                Player* caster = GetCaster()->ToPlayer();
-                // immediately finishes the cooldown on Frost spells
-                const SpellCooldowns& cm = caster->GetSpellCooldownMap();
-                for (SpellCooldowns::const_iterator itr = cm.begin(); itr != cm.end();)
+                GetCaster()->GetSpellHistory()->ResetCooldowns([](SpellHistory::CooldownStorageType::iterator itr)
                 {
-                    SpellInfo const* spellInfo = sSpellMgr->EnsureSpellInfo(itr->first);
-
-                    if (spellInfo->SpellFamilyName == SPELLFAMILY_MAGE &&
-                        (spellInfo->GetSchoolMask() & SPELL_SCHOOL_MASK_FROST) &&
-                        spellInfo->Id != SPELL_MAGE_COLD_SNAP && spellInfo->GetRecoveryTime() > 0)
-                    {
-                        caster->RemoveSpellCooldown((itr++)->first, true);
-                    }
-                    else
-                        ++itr;
-                }
+                    SpellInfo const* spellInfo = sSpellMgr->AssertSpellInfo(itr->first);
+                    return spellInfo->SpellFamilyName == SPELLFAMILY_MAGE && (spellInfo->GetSchoolMask() & SPELL_SCHOOL_MASK_FROST) &&
+                           spellInfo->Id != SPELL_MAGE_COLD_SNAP && spellInfo->GetRecoveryTime() > 0;
+                }, true);
             }
 
             void Register() override
@@ -703,7 +694,7 @@ class spell_mage_glyph_of_ice_block : public SpellScriptLoader
             {
                 PreventDefaultAction();
                 // Remove Frost Nova cooldown
-                GetTarget()->ToPlayer()->RemoveSpellCooldown(SPELL_MAGE_FROST_NOVA, true);
+                GetTarget()->GetSpellHistory()->ResetCooldown(SPELL_MAGE_FROST_NOVA, true);
             }
 
             void Register() override
@@ -895,7 +886,7 @@ class spell_mage_ignite : public SpellScriptLoader
             {
                 PreventDefaultAction();
 
-                SpellInfo const* igniteDot = sSpellMgr->EnsureSpellInfo(SPELL_MAGE_IGNITE);
+                SpellInfo const* igniteDot = sSpellMgr->AssertSpellInfo(SPELL_MAGE_IGNITE);
                 int32 pct = 8 * GetSpellInfo()->GetRank();
 
                 int32 amount = int32(CalculatePct(eventInfo.GetDamageInfo()->GetDamage(), pct) / igniteDot->GetMaxTicks(DIFFICULTY_NONE));
@@ -1297,7 +1288,7 @@ class spell_mage_ring_of_frost : public SpellScriptLoader
             void HandleEffectPeriodic(AuraEffect const* /*aurEff*/)
             {
                 if (TempSummon* ringOfFrost = GetRingOfFrostMinion())
-                    if (GetMaxDuration() - int32(ringOfFrost->GetTimer()) >= sSpellMgr->EnsureSpellInfo(SPELL_MAGE_RING_OF_FROST_DUMMY)->GetDuration())
+                    if (GetMaxDuration() - int32(ringOfFrost->GetTimer()) >= sSpellMgr->AssertSpellInfo(SPELL_MAGE_RING_OF_FROST_DUMMY)->GetDuration())
                         GetTarget()->CastSpell(ringOfFrost->GetPositionX(), ringOfFrost->GetPositionY(), ringOfFrost->GetPositionZ(), SPELL_MAGE_RING_OF_FROST_FREEZE, true);
             }
 
@@ -1372,7 +1363,7 @@ class spell_mage_ring_of_frost_freeze : public SpellScriptLoader
             void FilterTargets(std::list<WorldObject*>& targets)
             {
                 WorldLocation const* dest = GetExplTargetDest();
-                float outRadius = sSpellMgr->EnsureSpellInfo(SPELL_MAGE_RING_OF_FROST_SUMMON)->GetEffect(EFFECT_0)->CalcRadius();
+                float outRadius = sSpellMgr->AssertSpellInfo(SPELL_MAGE_RING_OF_FROST_SUMMON)->GetEffect(EFFECT_0)->CalcRadius();
                 float inRadius  = 4.7f;
 
                 targets.remove_if([dest, outRadius, inRadius](WorldObject* target)

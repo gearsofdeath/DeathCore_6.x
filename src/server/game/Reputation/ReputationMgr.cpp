@@ -49,7 +49,7 @@ bool ReputationMgr::IsAtWar(uint32 faction_id) const
     if (!factionEntry)
     {
         TC_LOG_ERROR("misc", "ReputationMgr::IsAtWar: Can't get AtWar flag of %s for unknown faction (faction id) #%u.", _player->GetName().c_str(), faction_id);
-        return 0;
+        return false;
     }
 
     return IsAtWar(factionEntry);
@@ -278,7 +278,7 @@ bool ReputationMgr::SetReputation(FactionEntry const* factionEntry, int32 standi
                 {
                     // bonuses are already given, so just modify standing by rate
                     int32 spilloverRep = int32(standing * repTemplate->faction_rate[i]);
-                    SetOneFactionReputation(sFactionStore.LookupEntry(repTemplate->faction[i]), spilloverRep, incremental);
+                    SetOneFactionReputation(sFactionStore.AssertEntry(repTemplate->faction[i]), spilloverRep, incremental);
                 }
             }
         }

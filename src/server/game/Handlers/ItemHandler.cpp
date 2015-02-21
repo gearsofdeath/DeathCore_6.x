@@ -529,38 +529,41 @@ void WorldSession::HandleBuyItemInSlotOpcode(WorldPacket& recvData)
     GetPlayer()->BuyItemFromVendorSlot(vendorguid, slot, item, count, bag, bagslot);
 }
 
-void WorldSession::HandleBuyItemOpcode(WorldPacket& recvData)
+void WorldSession::HandleBuyItemOpcode(WorldPackets::Item::BuyItem& packet)
 {
-    TC_LOG_DEBUG("network", "WORLD: Received CMSG_BUY_ITEM");
-    ObjectGuid vendorguid, bagGuid;
-    uint32 item, slot, count;
-    uint8 itemType; // 1 = item, 2 = currency
-    uint8 bagSlot;
-
-    recvData >> vendorguid >> itemType >> item >> slot >> count >> bagGuid >> bagSlot;
-
     // client expects count starting at 1, and we send vendorslot+1 to client already
-    if (slot > 0)
-        --slot;
+    if (packet.Muid > 0)
+        --packet.Muid;
     else
         return; // cheating
 
-    if (itemType == ITEM_VENDOR_TYPE_ITEM)
+    switch (packet.ItemType)
     {
-        Item* bagItem = _player->GetItemByGuid(bagGuid);
+        case ITEM_VENDOR_TYPE_ITEM:
+        {
+            Item* bagItem = _player->GetItemByGuid(packet.ContainerGUID);
 
-        uint8 bag = NULL_BAG;
-        if (bagItem && bagItem->IsBag())
-            bag = bagItem->GetSlot();
-        else if (bagGuid == GetPlayer()->GetGUID()) // The client sends the player guid when trying to store an item in the default backpack
-            bag = INVENTORY_SLOT_BAG_0;
+            uint8 bag = NULL_BAG;
+            if (bagItem && bagItem->IsBag())
+                bag = bagItem->GetSlot();
+            else if (packet.ContainerGUID == GetPlayer()->GetGUID()) // The client sends the player guid when trying to store an item in the default backpack
+                bag = INVENTORY_SLOT_BAG_0;
 
-        GetPlayer()->BuyItemFromVendorSlot(vendorguid, slot, item, count, bag, bagSlot);
+            GetPlayer()->BuyItemFromVendorSlot(packet.VendorGUID, packet.Muid, packet.Item.ItemID,
+                packet.Quantity, bag, packet.Slot);
+            break;
+        }
+        case ITEM_VENDOR_TYPE_CURRENCY:
+        {
+            GetPlayer()->BuyCurrencyFromVendorSlot(packet.VendorGUID, packet.Muid, packet.Item.ItemID, packet.Quantity);
+            break;
+        }
+        default:
+        {
+            TC_LOG_DEBUG("network", "WORLD: received wrong itemType (%u) in HandleBuyItemOpcode", packet.ItemType);
+            break;
+        }
     }
-    else if (itemType == ITEM_VENDOR_TYPE_CURRENCY)
-        GetPlayer()->BuyCurrencyFromVendorSlot(vendorguid, slot, item, count);
-    else
-        TC_LOG_DEBUG("network", "WORLD: received wrong itemType (%u) in HandleBuyItemOpcode", itemType);
 }
 
 void WorldSession::HandleListInventoryOpcode(WorldPackets::NPC::Hello& packet)
@@ -684,56 +687,45 @@ void WorldSession::SendListInventory(ObjectGuid vendorGuid)
     SendPacket(packet.Write());
 }
 
-void WorldSession::HandleAutoStoreBagItemOpcode(WorldPacket& recvData)
+void WorldSession::HandleAutoStoreBagItemOpcode(WorldPackets::Item::AutoStoreBagItem& packet)
 {
-    uint32 itemCount = recvData.ReadBits(2);
-
-    if (itemCount)
+    if (!packet.Inv.Items.empty())
     {
-        TC_LOG_ERROR("network", "WORLD: HandleAutoStoreBagItemOpcode - Invalid itemCount (%u)", itemCount);
+        TC_LOG_ERROR("network", "HandleAutoStoreBagItemOpcode - Invalid itemCount (" SZFMTD ")", packet.Inv.Items.size());
         return;
     }
 
-    /*for (uint32 i = 0; i < itemCount; ++i)
-    {
-        recvData.read_skip<uint8>();
-        recvData.read_skip<uint8>();
-    }*/
+    TC_LOG_DEBUG("network", "HandleAutoStoreBagItemOpcode: receive ContainerSlotA: %u, SlotA: %u, ContainerSlotB: %u",
+        packet.ContainerSlotA, packet.SlotA, packet.ContainerSlotB);
 
-    //TC_LOG_DEBUG("network", "WORLD: CMSG_AUTOSTORE_BAG_ITEM");
-    uint8 srcbag, srcslot, dstbag;
-
-    recvData >> srcbag >> dstbag >> srcslot;
-    TC_LOG_DEBUG("network", "STORAGE: receive srcbag = %u, srcslot = %u, dstbag = %u", srcbag, srcslot, dstbag);
-
-    Item* pItem = _player->GetItemByPos(srcbag, srcslot);
-    if (!pItem)
+    Item* item = _player->GetItemByPos(packet.ContainerSlotA, packet.SlotA);
+    if (!item)
         return;
 
-    if (!_player->IsValidPos(dstbag, NULL_SLOT, false))      // can be autostore pos
+    if (!_player->IsValidPos(packet.ContainerSlotB, NULL_SLOT, false))      // can be autostore pos
     {
-        _player->SendEquipError(EQUIP_ERR_WRONG_SLOT, NULL, NULL);
+        _player->SendEquipError(EQUIP_ERR_WRONG_SLOT);
         return;
     }
 
-    uint16 src = pItem->GetPos();
+    uint16 src = item->GetPos();
 
     // check unequip potability for equipped items and bank bags
-    if (_player->IsEquipmentPos (src) || _player->IsBagPos (src))
+    if (_player->IsEquipmentPos(src) || _player->IsBagPos(src))
     {
-        InventoryResult msg = _player->CanUnequipItem(src, !_player->IsBagPos (src));
+        InventoryResult msg = _player->CanUnequipItem(src, !_player->IsBagPos(src));
         if (msg != EQUIP_ERR_OK)
         {
-            _player->SendEquipError(msg, pItem, NULL);
+            _player->SendEquipError(msg, item);
             return;
         }
     }
 
     ItemPosCountVec dest;
-    InventoryResult msg = _player->CanStoreItem(dstbag, NULL_SLOT, dest, pItem, false);
+    InventoryResult msg = _player->CanStoreItem(packet.ContainerSlotB, NULL_SLOT, dest, item, false);
     if (msg != EQUIP_ERR_OK)
     {
-        _player->SendEquipError(msg, pItem, NULL);
+        _player->SendEquipError(msg, item);
         return;
     }
 
@@ -741,12 +733,12 @@ void WorldSession::HandleAutoStoreBagItemOpcode(WorldPacket& recvData)
     if (dest.size() == 1 && dest[0].pos == src)
     {
         // just remove grey item state
-        _player->SendEquipError(EQUIP_ERR_INTERNAL_BAG_ERROR, pItem, NULL);
+        _player->SendEquipError(EQUIP_ERR_INTERNAL_BAG_ERROR, item);
         return;
     }
 
-    _player->RemoveItem(srcbag, srcslot, true);
-    _player->StoreItem(dest, pItem, true);
+    _player->RemoveItem(packet.ContainerSlotA, packet.SlotA, true);
+    _player->StoreItem(dest, item, true);
 }
 
 void WorldSession::HandleBuyBankSlotOpcode(WorldPacket& recvPacket)
@@ -1248,16 +1240,16 @@ void WorldSession::HandleCancelTempEnchantmentOpcode(WorldPacket& recvData)
     item->ClearEnchantment(TEMP_ENCHANTMENT_SLOT);
 }
 
-void WorldSession::HandleItemRefundInfoRequest(WorldPackets::Item::ItemRefundInfo& packet)
+void WorldSession::HandleGetItemPurchaseData(WorldPackets::Item::GetItemPurchaseData& packet)
 {
-    TC_LOG_DEBUG("network", "WORLD: CMSG_ITEM_REFUND_INFO: Item %s", packet.ItemGUID.ToString().c_str());
-
     Item* item = _player->GetItemByGuid(packet.ItemGUID);
     if (!item)
     {
-        TC_LOG_DEBUG("network", "Item refund: item not found!");
+        TC_LOG_DEBUG("network", "HandleGetItemPurchaseData: Item %s not found!", packet.ItemGUID.ToString().c_str());
         return;
     }
+
+    TC_LOG_DEBUG("network", "HandleGetItemPurchaseData: Item %s", packet.ItemGUID.ToString().c_str());
 
     GetPlayer()->SendRefundInfo(item);
 }
@@ -1294,7 +1286,7 @@ void WorldSession::HandleItemTextQuery(WorldPacket& recvData )
 
     TC_LOG_DEBUG("network", "CMSG_ITEM_TEXT_QUERY %s", itemGuid.ToString().c_str());
 
-    WorldPacket data(SMSG_ITEM_TEXT_QUERY_RESPONSE, 14);    // guess size
+    WorldPacket data(SMSG_QUERY_ITEM_TEXT_RESPONSE, 14);    // guess size
 
     if (Item* item = _player->GetItemByGuid(itemGuid))
     {

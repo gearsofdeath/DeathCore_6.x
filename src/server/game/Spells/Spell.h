@@ -29,7 +29,9 @@ namespace WorldPackets
 {
     namespace Spells
     {
+        struct SpellCastRequest;
         struct SpellTargetData;
+        struct SpellCastData;
     }
 }
 
@@ -107,7 +109,7 @@ class SpellCastTargets
 {
     public:
         SpellCastTargets();
-        SpellCastTargets(Unit* caster, uint32 targetMask, ObjectGuid targetGuid, ObjectGuid itemTargetGuid, ObjectGuid srcTransportGuid, ObjectGuid destTransportGuid, Position srcPos, Position destPos, float elevation, float missileSpeed, std::string targetString);
+        SpellCastTargets(Unit* caster, WorldPackets::Spells::SpellCastRequest const& spellCastRequest);
         ~SpellCastTargets();
 
         void Read(ByteBuffer& data, Unit* caster);
@@ -166,14 +168,14 @@ class SpellCastTargets
         bool HasDst() const { return (GetTargetMask() & TARGET_FLAG_DEST_LOCATION) != 0; }
         bool HasTraj() const { return m_speed != 0; }
 
-        float GetElevation() const { return m_elevation; }
-        void SetElevation(float elevation) { m_elevation = elevation; }
+        float GetPitch() const { return m_pitch; }
+        void SetPitch(float pitch) { m_pitch = pitch; }
         float GetSpeed() const { return m_speed; }
         void SetSpeed(float speed) { m_speed = speed; }
 
         float GetDist2d() const { return m_src._position.GetExactDist2d(&m_dst._position); }
-        float GetSpeedXY() const { return m_speed * std::cos(m_elevation); }
-        float GetSpeedZ() const { return m_speed * std::sin(m_elevation); }
+        float GetSpeedXY() const { return m_speed * std::cos(m_pitch); }
+        float GetSpeedZ() const { return m_speed * std::sin(m_pitch); }
 
         void Update(Unit* caster);
         void OutDebug() const;
@@ -195,7 +197,7 @@ class SpellCastTargets
         SpellDestination m_src;
         SpellDestination m_dst;
 
-        float m_elevation, m_speed;
+        float m_pitch, m_speed;
         std::string m_strTarget;
 };
 
@@ -364,6 +366,7 @@ class Spell
         void EffectGiveCurrency(SpellEffIndex effIndex);
         void EffectResurrectWithAura(SpellEffIndex effIndex);
         void EffectCreateAreaTrigger(SpellEffIndex effIndex);
+        void EffectRemoveTalent(SpellEffIndex effIndex);
 
         typedef std::set<Aura*> UsedSpellMods;
 
@@ -435,7 +438,6 @@ class Spell
         void setState(uint32 state) { m_spellState = state; }
 
         void DoCreateItem(uint32 i, uint32 itemtype);
-        void WriteSpellGoTargets(WorldPacket* data);
 
         bool CheckEffectTarget(Unit const* target, SpellEffectInfo const* effect, Position const* losPosition) const;
         bool CheckEffectTarget(GameObject const* target, SpellEffectInfo const* effect) const;
@@ -444,7 +446,7 @@ class Spell
         void CheckSrc() { if (!m_targets.HasSrc()) m_targets.SetSrc(*m_caster); }
         void CheckDst() { if (!m_targets.HasDst()) m_targets.SetDst(*m_caster); }
 
-        static void SendCastResult(Player* caster, SpellInfo const* spellInfo, uint8 cast_count, SpellCastResult result, SpellCustomErrors customError = SPELL_CUSTOM_ERROR_NONE, OpcodeServer opcode = SMSG_CAST_FAILED);
+        static void SendCastResult(Player* caster, SpellInfo const* spellInfo, uint8 cast_count, SpellCastResult result, SpellCustomErrors customError = SPELL_CUSTOM_ERROR_NONE, OpcodeServer opcode = SMSG_CAST_FAILED, uint32 misc = 0);
         void SendCastResult(SpellCastResult result);
         void SendPetCastResult(SpellCastResult result);
         void SendSpellStart();
@@ -475,7 +477,14 @@ class Spell
         ObjectGuid m_castItemGUID;
         uint32 m_castItemEntry;
         uint8 m_cast_count;
-        uint32 m_glyphIndex;
+        union
+        {
+            // Alternate names for this value
+            uint32 TalentId;
+            uint32 GlyphSlot;
+
+            uint32 Data;
+        } m_misc;
         uint32 m_preCastSpell;
         SpellCastTargets m_targets;
         int8 m_comboPointGain;
@@ -489,6 +498,7 @@ class Spell
         void ReSetTimer() { m_timer = m_casttime > 0 ? m_casttime : 0; }
         bool IsNextMeleeSwingSpell() const;
         bool IsTriggered() const { return (_triggeredCastFlags & TRIGGERED_FULL_MASK) != 0; }
+        bool IsIgnoringCooldowns() const { return (_triggeredCastFlags & TRIGGERED_IGNORE_SPELL_AND_CATEGORY_CD) != 0; }
         bool IsChannelActive() const { return m_caster->GetUInt32Value(UNIT_CHANNEL_SPELL) != 0; }
         bool IsAutoActionResetSpell() const;
 
@@ -627,7 +637,7 @@ class Spell
             bool   scaleAura:1;
             int32  damage;
         };
-        std::list<TargetInfo> m_UniqueTargetInfo;
+        std::vector<TargetInfo> m_UniqueTargetInfo;
         uint32 m_channelTargetEffectMask;                        // Mask req. alive targets
 
         struct GOTargetInfo
@@ -637,14 +647,14 @@ class Spell
             uint32  effectMask:32;
             bool   processed:1;
         };
-        std::list<GOTargetInfo> m_UniqueGOTargetInfo;
+        std::vector<GOTargetInfo> m_UniqueGOTargetInfo;
 
         struct ItemTargetInfo
         {
             Item  *item;
             uint32 effectMask;
         };
-        std::list<ItemTargetInfo> m_UniqueItemInfo;
+        std::vector<ItemTargetInfo> m_UniqueItemInfo;
 
         SpellDestination m_destTargets[MAX_SPELL_EFFECTS];
 
@@ -704,6 +714,8 @@ class Spell
         // effect helpers
         void SummonGuardian(uint32 i, uint32 entry, SummonPropertiesEntry const* properties, uint32 numSummons);
         void CalculateJumpSpeeds(SpellEffectInfo const* effInfo, float dist, float& speedxy, float& speedz);
+
+        void UpdateSpellCastDataTargets(WorldPackets::Spells::SpellCastData& data);
 
         SpellCastResult CanOpenLock(uint32 effIndex, uint32 lockid, SkillType& skillid, int32& reqSkillValue, int32& skillValue);
         // -------------------------------------------

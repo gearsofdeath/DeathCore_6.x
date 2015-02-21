@@ -16,7 +16,6 @@
  */
 
 #include "NPCPackets.h"
-#include "ItemPackets.h"
 
 void WorldPackets::NPC::Hello::Read()
 {
@@ -122,6 +121,22 @@ WorldPacket const* WorldPackets::NPC::TrainerList::Write()
 WorldPacket const* WorldPackets::NPC::ShowBank::Write()
 {
     _worldPacket << Guid;
+
+    return &_worldPacket;
+}
+
+void WorldPackets::NPC::GossipSelectOption::Read()
+{
+    _worldPacket >> GossipUnit;
+    _worldPacket >> GossipID;
+    _worldPacket >> GossipIndex;
+
+    uint32 length = _worldPacket.ReadBits(8);
+    PromotionCode = _worldPacket.ReadString(length);
+}
+WorldPacket const* WorldPackets::NPC::PlayerTabardVendorActivate::Write()
+{
+    _worldPacket << Vendor;
 
     return &_worldPacket;
 }

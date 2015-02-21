@@ -198,6 +198,13 @@ enum ItemFlagsExtra
     ITEM_FLAGS_EXTRA_CAN_TRANSMOG            = 0x00800000,
 };
 
+enum ItemFlags3
+{
+    ITEM_FLAG3_IGNORE_ITEM_LEVEL_DELTAS  = 0x080,   // Ignore item level adjustments from PLAYER_FIELD_ITEM_LEVEL_DELTA
+    ITEM_FLAG3_IGNORE_PVP_ITEM_LEVEL_CAP = 0x100,
+    ITEM_FLAG3_HEIRLOOM_QUALITY          = 0x200,   // Item appears as having heirloom quality ingame regardless of its real quality (does not affect stat calculation)
+};
+
 enum ItemFlagsCustom
 {
     ITEM_FLAGS_CU_DURATION_REAL_TIME    = 0x0001,   // Item duration will tick even if player is offline
@@ -223,6 +230,7 @@ enum CurrencyCategory
 
 enum ItemVendorType
 {
+    ITEM_VENDOR_TYPE_NONE     = 0,
     ITEM_VENDOR_TYPE_ITEM     = 1,
     ITEM_VENDOR_TYPE_CURRENCY = 2,
 };
@@ -573,20 +581,6 @@ const uint32 MaxItemSubclassValues[MAX_ITEM_CLASS] =
     MAX_ITEM_SUBCLASS_GLYPH
 };
 
-#pragma pack(push, 1)
-
-struct ItemEffect
-{
-    uint32  SpellID;
-    uint32  Trigger;
-    int32   Charges;
-    int32   Cooldown;
-    uint32  Category;
-    int32   CategoryCooldown;
-};
-
-#pragma pack(pop)
-
 #define MIN_ITEM_LEVEL 1
 #define MAX_ITEM_LEVEL 1000
 
@@ -637,6 +631,7 @@ struct ItemTemplate
     uint32 GetArea() const { return ExtendedData->Area; }
     uint32 GetMap() const { return ExtendedData->Map; }
     uint32 GetBagFamily() const { return ExtendedData->BagFamily; }
+    uint32 GetTotemCategory() const { return ExtendedData->TotemCategory; }
     SocketColor GetSocketColor(uint32 index) const { ASSERT(index < MAX_ITEM_PROTO_SOCKETS); return SocketColor(ExtendedData->SocketColor[index]); }
     uint32 GetSocketBonus() const { return ExtendedData->SocketBonus; }
     uint32 GetGemProperties() const { return ExtendedData->GemProperties; }
@@ -649,7 +644,7 @@ struct ItemTemplate
     void GetBaseDamage(float& minDamage, float& maxDamage) const { GetDamage(ExtendedData->ItemLevel, minDamage, maxDamage); }
 
     uint32 MaxDurability;
-    std::vector<ItemEffect> Effects;
+    std::vector<ItemEffectEntry const*> Effects;
 
     // extra fields, not part of db2 files
     uint32 ScriptId;

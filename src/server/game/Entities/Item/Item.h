@@ -209,10 +209,14 @@ enum ItemUpdateState
 
 enum ItemModifier
 {
-    ITEM_MODIFIER_TRANSMOG_APPEARANCE_MOD   = 1,
-    ITEM_MODIFIER_TRANSMOG_ITEM_ID          = 2,
-    ITEM_MODIFIER_UPGRADE_ID                = 3,
-    ITEM_MODIFIER_ENCHANT_ILLUSION          = 8,
+    ITEM_MODIFIER_TRANSMOG_APPEARANCE_MOD   = 0,
+    ITEM_MODIFIER_TRANSMOG_ITEM_ID          = 1,
+    ITEM_MODIFIER_UPGRADE_ID                = 2,
+    ITEM_MODIFIER_BATTLE_PET_SPECIES_ID     = 3,
+    ITEM_MODIFIER_BATTLE_PET_BREED_DATA     = 4, // (breedId) | (breedQuality << 24)
+    ITEM_MODIFIER_BATTLE_PET_LEVEL          = 5,
+    ITEM_MODIFIER_BATTLE_PET_DISPLAY_ID     = 6,
+    ITEM_MODIFIER_ENCHANT_ILLUSION          = 7,
 
     MAX_ITEM_MODIFIERS
 };
@@ -260,7 +264,7 @@ class Item : public Object
         bool IsBindedNotWith(Player const* player) const;
         bool IsBoundByEnchant() const;
         virtual void SaveToDB(SQLTransaction& trans);
-        virtual bool LoadFromDB(ObjectGuid::LowType guid, ObjectGuid owner_guid, Field* fields, uint32 entry);
+        virtual bool LoadFromDB(ObjectGuid::LowType guid, ObjectGuid ownerGuid, Field* fields, uint32 entry);
 
         void AddBonuses(uint32 bonusListID);
 

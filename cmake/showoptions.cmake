@@ -1,8 +1,8 @@
 # output generic information about the core and buildtype chosen
 message("")
-message("* DeathCore revision   : ${rev_hash} ${rev_date} (${rev_branch} branch)")
+message("* TrinityCore revision   : ${rev_hash} ${rev_date} (${rev_branch} branch)")
 if( UNIX )
-  message("* DeathCore buildtype  : ${CMAKE_BUILD_TYPE}")
+  message("* TrinityCore buildtype  : ${CMAKE_BUILD_TYPE}")
 endif()
 message("")
 

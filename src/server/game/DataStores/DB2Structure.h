@@ -64,7 +64,7 @@ struct HolidaysEntry
     uint32      CalendarFlags[MAX_HOLIDAY_FLAGS];                   // 29-38
     //uint32    HolidayNameID;                                      // 39 HolidayNames.dbc
     //uint32    HolidayDescriptionID;                               // 40 HolidayDescriptions.dbc
-    char*       TextureFilename;                                    // 41
+    LocalizedString* TextureFilename;                               // 41
     uint32      Priority;                                           // 42
     uint32      CalendarFilterType;                                 // 43 (-1 = Fishing Contest, 0 = Unk, 1 = Darkmoon Festival, 2 = Yearly holiday)
     //uint32    Flags;                                              // 44 (0 = Darkmoon Faire, Fishing Contest and Wotlk Launch, rest is 1)
@@ -239,6 +239,20 @@ struct KeyChainEntry
     uint8       Key[KEYCHAIN_SIZE];
 };
 
+struct MountEntry
+{
+    uint32 Id;
+    uint32 MountTypeId;
+    uint32 DisplayId;
+    uint32 Flags;
+    LocalizedString* Name;
+    LocalizedString* Description;
+    LocalizedString* SourceDescription;
+    uint32 Source;
+    uint32 SpellId;
+    uint32 PlayerConditionId;
+};
+
 #define MAX_OVERRIDE_SPELL 10
 
 struct OverrideSpellDataEntry
@@ -286,6 +300,14 @@ struct SpellClassOptionsEntry
     uint32      ModalNextSpell;                                     // 1
     flag128     SpellClassMask;                                     // 2
     uint32      SpellClassSet;                                      // 3
+};
+
+struct SpellLearnSpellEntry
+{
+    uint32      ID;                                                 // 0
+    uint32      LearnSpellID;                                       // 1
+    uint32      SpellID;                                            // 2
+    uint32      OverridesSpellID;                                   // 3
 };
 
 struct SpellMiscEntry
@@ -367,14 +389,14 @@ struct SpellTotemsEntry
 
 struct TaxiNodesEntry
 {
-    uint32          ID;                                             // 0
-    uint32          MapID;                                          // 1
-    DBCPosition3D   Pos;                                            // 2-4
-    char*           Name_lang;                                      // 5
-    uint32          MountCreatureID[2];                             // 6-7
-    uint32          ConditionID;                                    // 8
-    uint32          Flags;                                          // 9
-    float           MapOffset[2];                                   // 10-11
+    uint32           ID;                                            // 0
+    uint32           MapID;                                         // 1
+    DBCPosition3D    Pos;                                           // 2-4
+    LocalizedString* Name_lang;                                     // 5
+    uint32           MountCreatureID[2];                            // 6-7
+    uint32           ConditionID;                                   // 8
+    uint32           Flags;                                         // 9
+    float            MapOffset[2];                                  // 10-11
 };
 
 struct TaxiPathEntry
