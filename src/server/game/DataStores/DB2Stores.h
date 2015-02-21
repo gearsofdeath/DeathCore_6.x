@@ -35,7 +35,6 @@ extern DB2Storage<PhaseGroupEntry>              sPhaseGroupStore;
 extern DB2Storage<SpellAuraRestrictionsEntry>   sSpellAuraRestrictionsStore;
 extern DB2Storage<SpellCastingRequirementsEntry> sSpellCastingRequirementsStore;
 extern DB2Storage<SpellClassOptionsEntry>       sSpellClassOptionsStore;
-extern DB2Storage<SpellLearnSpellEntry>         sSpellLearnSpellStore;
 extern DB2Storage<SpellMiscEntry>               sSpellMiscStore;
 extern DB2Storage<SpellPowerEntry>              sSpellPowerStore;
 extern SpellPowerBySpellIDMap                   sSpellPowerBySpellIDStore;
@@ -72,7 +71,6 @@ public:
     typedef std::unordered_map<uint32 /*bonusListId*/, ItemBonusList> ItemBonusListContainer;
     typedef std::unordered_multimap<uint32 /*itemId*/, uint32 /*bonusTreeId*/> ItemToBonusTreeContainer;
     typedef std::unordered_map<uint32, std::set<ItemBonusTreeNodeEntry const*>> ItemBonusTreeContainer;
-    typedef std::unordered_map<uint32, MountEntry const*> MountContainer;
     typedef std::unordered_map<uint32, std::set<uint32>> PhaseGroupContainer;
 
     static DB2Manager& Instance()
@@ -93,7 +91,6 @@ public:
     uint32 GetItemDisplayId(uint32 itemId, uint32 appearanceModId) const;
     std::set<uint32> GetItemBonusTree(uint32 itemId, uint32 itemBonusTreeMod) const;
     ItemBonusList GetItemBonusList(uint32 bonusListId) const;
-    MountEntry const* GetMount(uint32 spellId) const;
     std::set<uint32> GetPhasesForGroup(uint32 group) const;
 
 private:
@@ -105,7 +102,6 @@ private:
     ItemBonusListContainer _itemBonusLists;
     ItemToBonusTreeContainer _itemToBonusTree;
     ItemBonusTreeContainer _itemBonusTrees;
-    MountContainer _mountsBySpellId;
     PhaseGroupContainer _phasesByGroup;
 };
 

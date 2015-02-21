@@ -50,12 +50,15 @@ enum StableResultCode
     STABLE_ERR_STABLE       = 0x0C,                         // "Internal pet error"
 };
 
-void WorldSession::HandleTabardVendorActivateOpcode(WorldPackets::NPC::Hello& packet)
+void WorldSession::HandleTabardVendorActivateOpcode(WorldPacket& recvData)
 {
-    Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(packet.Unit, UNIT_NPC_FLAG_TABARDDESIGNER);
+    ObjectGuid guid;
+    recvData >> guid;
+
+    Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_TABARDDESIGNER);
     if (!unit)
     {
-        TC_LOG_DEBUG("network", "WORLD: HandleTabardVendorActivateOpcode - %s not found or you can not interact with him.", packet.Unit.ToString().c_str());
+        TC_LOG_DEBUG("network", "WORLD: HandleTabardVendorActivateOpcode - %s not found or you can not interact with him.", guid.ToString().c_str());
         return;
     }
 
@@ -63,14 +66,14 @@ void WorldSession::HandleTabardVendorActivateOpcode(WorldPackets::NPC::Hello& pa
     if (GetPlayer()->HasUnitState(UNIT_STATE_DIED))
         GetPlayer()->RemoveAurasByType(SPELL_AURA_FEIGN_DEATH);
 
-    SendTabardVendorActivate(packet.Unit);
+    SendTabardVendorActivate(guid);
 }
 
 void WorldSession::SendTabardVendorActivate(ObjectGuid guid)
 {
-    WorldPackets::NPC::PlayerTabardVendorActivate packet;
-    packet.Vendor = guid;
-    SendPacket(packet.Write());
+    WorldPacket data(SMSG_TABARD_VENDOR_ACTIVATE, 18);
+    data << guid;
+    SendPacket(&data);
 }
 
 void WorldSession::HandleBankerActivateOpcode(WorldPackets::NPC::Hello& packet)

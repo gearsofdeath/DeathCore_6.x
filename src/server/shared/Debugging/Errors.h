@@ -49,10 +49,4 @@ namespace Trinity
 
 #define ASSERT WPAssert
 
-template <typename T> inline T* ASSERT_NOTNULL(T* pointer)
-{
-    ASSERT(pointer);
-    return pointer;
-}
-
 #endif

@@ -80,7 +80,8 @@ void WriteDB2RecordToPacket(DB2Storage<T> const& store, uint32 id, uint32 locale
                 char const* str = locStr->Str[locale];
                 size_t len = strlen(str);
                 buffer << uint16(len);
-                buffer.WriteString(str, len);
+                if (len)
+                    buffer << str;
                 entry += sizeof(char*);
                 break;
             }

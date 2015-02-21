@@ -20,6 +20,13 @@
 #include "forge_of_souls.h"
 #include "Player.h"
 
+#define MAX_ENCOUNTER 2
+
+/* Forge of Souls encounters:
+0- Bronjahm, The Godfather of Souls
+1- The Devourer of Souls
+*/
+
 class instance_forge_of_souls : public InstanceMapScript
 {
     public:
@@ -30,7 +37,7 @@ class instance_forge_of_souls : public InstanceMapScript
             instance_forge_of_souls_InstanceScript(Map* map) : InstanceScript(map)
             {
                 SetHeaders(DataHeader);
-                SetBossNumber(EncounterCount);
+                SetBossNumber(MAX_ENCOUNTER);
 
                 teamInInstance = 0;
             }
@@ -53,10 +60,10 @@ class instance_forge_of_souls : public InstanceMapScript
 
                 switch (creature->GetEntry())
                 {
-                    case NPC_BRONJAHM:
+                    case CREATURE_BRONJAHM:
                         bronjahm = creature->GetGUID();
                         break;
-                    case NPC_DEVOURER:
+                    case CREATURE_DEVOURER:
                         devourerOfSouls = creature->GetGUID();
                         break;
                     case NPC_SYLVANAS_PART1:
@@ -93,7 +100,7 @@ class instance_forge_of_souls : public InstanceMapScript
                 {
                     case DATA_BRONJAHM:
                         return bronjahm;
-                    case DATA_DEVOURER_OF_SOULS:
+                    case DATA_DEVOURER:
                         return devourerOfSouls;
                     default:
                         break;

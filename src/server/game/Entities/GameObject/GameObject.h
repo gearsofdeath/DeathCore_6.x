@@ -776,11 +776,11 @@ union GameObjectValue
     {
         uint32 MaxOpens;
     } FishingHole;
-    //29 GAMEOBJECT_TYPE_CONTROL_ZONE
+    //29 GAMEOBJECT_TYPE_CAPTURE_POINT
     struct
     {
         OPvPCapturePoint *OPvPObj;
-    } ControlZone;
+    } CapturePoint;
     //33 GAMEOBJECT_TYPE_DESTRUCTIBLE_BUILDING
     struct
     {

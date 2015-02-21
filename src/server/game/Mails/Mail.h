@@ -21,7 +21,6 @@
 
 #include "Common.h"
 #include "ObjectGuid.h"
-#include "Transaction.h"
 #include <map>
 
 struct AuctionEntry;

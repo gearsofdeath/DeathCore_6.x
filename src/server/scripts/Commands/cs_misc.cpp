@@ -36,7 +36,6 @@
 #include "GroupMgr.h"
 #include "MMapFactory.h"
 #include "DisableMgr.h"
-#include "SpellHistory.h"
 
 class misc_commandscript : public CommandScript
 {
@@ -714,8 +713,7 @@ public:
 
         if (!*args)
         {
-            target->GetSpellHistory()->ResetAllCooldowns();
-            target->GetSpellHistory()->ResetAllCharges();
+            target->RemoveAllSpellCooldown();
             handler->PSendSysMessage(LANG_REMOVEALL_COOLDOWN, nameLink.c_str());
         }
         else
@@ -725,16 +723,14 @@ public:
             if (!spellIid)
                 return false;
 
-            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellIid);
-            if (!spellInfo)
+            if (!sSpellMgr->GetSpellInfo(spellIid))
             {
                 handler->PSendSysMessage(LANG_UNKNOWN_SPELL, target == handler->GetSession()->GetPlayer() ? handler->GetTrinityString(LANG_YOU) : nameLink.c_str());
                 handler->SetSentErrorMessage(true);
                 return false;
             }
 
-            target->GetSpellHistory()->ResetCooldown(spellIid, true);
-            target->GetSpellHistory()->ResetCharges(spellInfo->ChargeCategoryEntry);
+            target->RemoveSpellCooldown(spellIid, true);
             handler->PSendSysMessage(LANG_REMOVE_COOLDOWN, spellIid, target == handler->GetSession()->GetPlayer() ? handler->GetTrinityString(LANG_YOU) : nameLink.c_str());
         }
         return true;

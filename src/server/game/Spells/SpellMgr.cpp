@@ -677,7 +677,7 @@ bool SpellMgr::IsSpellLearnToSpell(uint32 spell_id1, uint32 spell_id2) const
 {
     SpellLearnSpellMapBounds bounds = GetSpellLearnSpellMapBounds(spell_id1);
     for (SpellLearnSpellMap::const_iterator i = bounds.first; i != bounds.second; ++i)
-        if (i->second.Spell == spell_id2)
+        if (i->second.spell == spell_id2)
             return true;
     return false;
 }
@@ -1251,8 +1251,73 @@ void SpellMgr::UnloadSpellInfoChains()
     mSpellChains.clear();
 }
 
+void SpellMgr::LoadSpellTalentRanks()
+{
+    /* TODO: 6.x remove this
+    // cleanup core data before reload - remove reference to ChainNode from SpellInfo
+    UnloadSpellInfoChains();
+
+    for (uint32 i = 0; i < sTalentStore.GetNumRows(); ++i)
+    {
+        TalentEntry const* talentInfo = sTalentStore.LookupEntry(i);
+        if (!talentInfo)
+            continue;
+
+        SpellInfo const* lastSpell = NULL;
+        for (uint8 rank = MAX_TALENT_RANK - 1; rank > 0; --rank)
+        {
+            if (talentInfo->RankID[rank])
+            {
+                lastSpell = GetSpellInfo(talentInfo->RankID[rank]);
+                break;
+            }
+        }
+
+        if (!lastSpell)
+            continue;
+
+        SpellInfo const* firstSpell = GetSpellInfo(talentInfo->RankID[0]);
+        if (!firstSpell)
+        {
+            TC_LOG_ERROR("spells", "SpellMgr::LoadSpellTalentRanks: First Rank Spell %u for TalentEntry %u does not exist.", talentInfo->RankID[0], i);
+            continue;
+        }
+
+        SpellInfo const* prevSpell = NULL;
+        for (uint8 rank = 0; rank < MAX_TALENT_RANK; ++rank)
+        {
+            uint32 spellId = talentInfo->RankID[rank];
+            if (!spellId)
+                break;
+
+            SpellInfo const* currentSpell = GetSpellInfo(spellId);
+            if (!currentSpell)
+            {
+                TC_LOG_ERROR("spells", "SpellMgr::LoadSpellTalentRanks: Spell %u (Rank: %u) for TalentEntry %u does not exist.", spellId, rank + 1, i);
+                break;
+            }
+
+            SpellChainNode node;
+            node.first = firstSpell;
+            node.last  = lastSpell;
+            node.rank  = rank + 1;
+
+            node.prev = prevSpell;
+            node.next = node.rank < MAX_TALENT_RANK ? GetSpellInfo(talentInfo->RankID[node.rank]) : NULL;
+
+            mSpellChains[spellId] = node;
+            mSpellInfoMap[spellId]->ChainEntry = &mSpellChains[spellId];
+
+            prevSpell = currentSpell;
+        }
+    }*/
+}
+
 void SpellMgr::LoadSpellRanks()
 {
+    // cleanup data and load spell ranks for talents from dbc
+    LoadSpellTalentRanks();
+
     uint32 oldMSTime = getMSTime();
 
     //                                                     0             1      2
@@ -1484,27 +1549,25 @@ void SpellMgr::LoadSpellLearnSpells()
         uint32 spell_id = fields[0].GetUInt32();
 
         SpellLearnSpellNode node;
-        node.Spell       = fields[1].GetUInt32();
-        node.OverridesSpell = 0;
-        node.Active      = fields[2].GetBool();
-        node.AutoLearned = false;
+        node.spell       = fields[1].GetUInt32();
+        node.active      = fields[2].GetBool();
+        node.autoLearned = false;
 
-        SpellInfo const* spellInfo = GetSpellInfo(spell_id);
-        if (!spellInfo)
+        if (!GetSpellInfo(spell_id))
         {
             TC_LOG_ERROR("sql.sql", "Spell %u listed in `spell_learn_spell` does not exist", spell_id);
             continue;
         }
 
-        if (!GetSpellInfo(node.Spell))
+        if (!GetSpellInfo(node.spell))
         {
-            TC_LOG_ERROR("sql.sql", "Spell %u listed in `spell_learn_spell` learning not existed spell %u", spell_id, node.Spell);
+            TC_LOG_ERROR("sql.sql", "Spell %u listed in `spell_learn_spell` learning not existed spell %u", spell_id, node.spell);
             continue;
         }
 
-        if (spellInfo->HasAttribute(SPELL_ATTR0_CU_IS_TALENT))
+        if (GetTalentBySpellID(node.spell))
         {
-            TC_LOG_ERROR("sql.sql", "Spell %u listed in `spell_learn_spell` attempt learning talent spell %u, skipped", spell_id, node.Spell);
+            TC_LOG_ERROR("sql.sql", "Spell %u listed in `spell_learn_spell` attempt learning talent spell %u, skipped", spell_id, node.spell);
             continue;
         }
 
@@ -1530,28 +1593,27 @@ void SpellMgr::LoadSpellLearnSpells()
             if (effect && effect->Effect == SPELL_EFFECT_LEARN_SPELL)
             {
                 SpellLearnSpellNode dbc_node;
-                dbc_node.Spell = effect->TriggerSpell;
-                dbc_node.Active = true;                     // all dbc based learned spells is active (show in spell book or hide by client itself)
-                dbc_node.OverridesSpell = 0;
+                dbc_node.spell = effect->TriggerSpell;
+                dbc_node.active = true;                     // all dbc based learned spells is active (show in spell book or hide by client itself)
 
                 // ignore learning not existed spells (broken/outdated/or generic learnig spell 483
-                if (!GetSpellInfo(dbc_node.Spell))
+                if (!GetSpellInfo(dbc_node.spell))
                     continue;
 
                 // talent or passive spells or skill-step spells auto-cast and not need dependent learning,
                 // pet teaching spells must not be dependent learning (cast)
                 // other required explicit dependent learning
-                dbc_node.AutoLearned = effect->TargetA.GetTarget() == TARGET_UNIT_PET || entry->HasAttribute(SPELL_ATTR0_CU_IS_TALENT) || entry->IsPassive() || entry->HasEffect(SPELL_EFFECT_SKILL_STEP);
+                dbc_node.autoLearned = effect->TargetA.GetTarget() == TARGET_UNIT_PET || GetTalentBySpellID(spell) || entry->IsPassive() || entry->HasEffect(SPELL_EFFECT_SKILL_STEP);
 
                 SpellLearnSpellMapBounds db_node_bounds = dbSpellLearnSpells.equal_range(spell);
 
                 bool found = false;
                 for (SpellLearnSpellMap::const_iterator itr = db_node_bounds.first; itr != db_node_bounds.second; ++itr)
                 {
-                    if (itr->second.Spell == dbc_node.Spell)
+                    if (itr->second.spell == dbc_node.spell)
                     {
                         TC_LOG_ERROR("sql.sql", "Spell %u auto-learn spell %u in spell.dbc then the record in `spell_learn_spell` is redundant, please fix DB.",
-                            spell, dbc_node.Spell);
+                            spell, dbc_node.spell);
                         found = true;
                         break;
                     }
@@ -1566,55 +1628,6 @@ void SpellMgr::LoadSpellLearnSpells()
         }
     }
 
-    for (uint32 i = 0; i < sSpellLearnSpellStore.GetNumRows(); ++i)
-    {
-        SpellLearnSpellEntry const* spellLearnSpell = sSpellLearnSpellStore.LookupEntry(i);
-        if (!spellLearnSpell)
-            continue;
-
-        if (!GetSpellInfo(spellLearnSpell->SpellID))
-            continue;
-
-        SpellLearnSpellMapBounds db_node_bounds = dbSpellLearnSpells.equal_range(spellLearnSpell->LearnSpellID);
-        bool found = false;
-        for (SpellLearnSpellMap::const_iterator itr = db_node_bounds.first; itr != db_node_bounds.second; ++itr)
-        {
-            if (itr->second.Spell == spellLearnSpell->SpellID)
-            {
-                TC_LOG_ERROR("sql.sql", "Found redundant record (entry: %u, SpellID: %u) in `spell_learn_spell`, spell added automatically from SpellLearnSpell.db2", spellLearnSpell->LearnSpellID, spellLearnSpell->SpellID);
-                found = true;
-                break;
-            }
-        }
-
-        if (found)
-            continue;
-
-        // Check if it is already found in Spell.dbc, ignore silently if yes
-        SpellLearnSpellMapBounds dbc_node_bounds = GetSpellLearnSpellMapBounds(spellLearnSpell->LearnSpellID);
-        found = false;
-        for (SpellLearnSpellMap::const_iterator itr = dbc_node_bounds.first; itr != dbc_node_bounds.second; ++itr)
-        {
-            if (itr->second.Spell == spellLearnSpell->SpellID)
-            {
-                found = true;
-                break;
-            }
-        }
-
-        if (found)
-            continue;
-
-        SpellLearnSpellNode dbcLearnNode;
-        dbcLearnNode.Spell = spellLearnSpell->SpellID;
-        dbcLearnNode.OverridesSpell = spellLearnSpell->OverridesSpellID;
-        dbcLearnNode.Active = true;
-        dbcLearnNode.AutoLearned = false;
-
-        mSpellLearnSpells.insert(SpellLearnSpellMap::value_type(spellLearnSpell->LearnSpellID, dbcLearnNode));
-        ++dbc_count;
-    }
-
     uint32 mastery_count = 0;
     for (uint32 i = 0; i < sChrSpecializationStore.GetNumRows(); ++i)
     {
@@ -1622,55 +1635,57 @@ void SpellMgr::LoadSpellLearnSpells()
         if (!chrSpec)
             continue;
 
-        if (chrSpec->ClassID >= MAX_CLASSES)
-            continue;
-
-        uint32 masteryMainSpell = MasterySpells[chrSpec->ClassID];
-
-        for (uint32 m = 0; m < MAX_MASTERY_SPELLS; ++m)
+        for (uint32 c = CLASS_WARRIOR; c < MAX_CLASSES; ++c)
         {
-            uint32 mastery = chrSpec->MasterySpellID[m];
-            if (!mastery)
+            if (chrSpec->ClassID != c)
                 continue;
 
-            SpellLearnSpellMapBounds db_node_bounds = dbSpellLearnSpells.equal_range(masteryMainSpell);
-            bool found = false;
-            for (SpellLearnSpellMap::const_iterator itr = db_node_bounds.first; itr != db_node_bounds.second; ++itr)
+            uint32 masteryMainSpell = MasterySpells[c];
+
+            for (uint32 m = 0; m < MAX_MASTERY_SPELLS; ++m)
             {
-                if (itr->second.Spell == mastery)
+                uint32 mastery = chrSpec->MasterySpellID[m];
+                if (!mastery)
+                    continue;
+
+                SpellLearnSpellMapBounds db_node_bounds = dbSpellLearnSpells.equal_range(masteryMainSpell);
+                bool found = false;
+                for (SpellLearnSpellMap::const_iterator itr = db_node_bounds.first; itr != db_node_bounds.second; ++itr)
                 {
-                    TC_LOG_ERROR("sql.sql", "Found redundant record (entry: %u, SpellID: %u) in `spell_learn_spell`, spell added automatically as mastery learned spell from ChrSpecialization.dbc", masteryMainSpell, mastery);
-                    found = true;
-                    break;
+                    if (itr->second.spell == mastery)
+                    {
+                        TC_LOG_ERROR("sql.sql", "Found redundant record (entry: %u, SpellID: %u) in `spell_learn_spell`, spell added automatically as mastery learned spell from TalentTab.dbc", masteryMainSpell, mastery);
+                        found = true;
+                        break;
+                    }
                 }
-            }
 
-            if (found)
-                continue;
+                if (found)
+                    continue;
 
-            // Check if it is already found in Spell.dbc, ignore silently if yes
-            SpellLearnSpellMapBounds dbc_node_bounds = GetSpellLearnSpellMapBounds(masteryMainSpell);
-            found = false;
-            for (SpellLearnSpellMap::const_iterator itr = dbc_node_bounds.first; itr != dbc_node_bounds.second; ++itr)
-            {
-                if (itr->second.Spell == mastery)
+                // Check if it is already found in Spell.dbc, ignore silently if yes
+                SpellLearnSpellMapBounds dbc_node_bounds = GetSpellLearnSpellMapBounds(masteryMainSpell);
+                found = false;
+                for (SpellLearnSpellMap::const_iterator itr = dbc_node_bounds.first; itr != dbc_node_bounds.second; ++itr)
                 {
-                    found = true;
-                    break;
+                    if (itr->second.spell == mastery)
+                    {
+                        found = true;
+                        break;
+                    }
                 }
+
+                if (found)
+                    continue;
+
+                SpellLearnSpellNode masteryNode;
+                masteryNode.spell       = mastery;
+                masteryNode.active      = true;
+                masteryNode.autoLearned = false;
+
+                mSpellLearnSpells.insert(SpellLearnSpellMap::value_type(masteryMainSpell, masteryNode));
+                ++mastery_count;
             }
-
-            if (found)
-                continue;
-
-            SpellLearnSpellNode masteryNode;
-            masteryNode.Spell       = mastery;
-            masteryNode.OverridesSpell = 0;
-            masteryNode.Active      = true;
-            masteryNode.AutoLearned = false;
-
-            mSpellLearnSpells.insert(SpellLearnSpellMap::value_type(masteryMainSpell, masteryNode));
-            ++mastery_count;
         }
     }
 
@@ -1696,7 +1711,7 @@ void SpellMgr::LoadSpellTargetPositions()
     {
         Field* fields = result->Fetch();
 
-        uint32 spellId = fields[0].GetUInt32();
+        uint32 Spell_ID = fields[0].GetUInt32();
         SpellEffIndex effIndex = SpellEffIndex(fields[1].GetUInt8());
 
         SpellTargetPosition st;
@@ -1709,27 +1724,27 @@ void SpellMgr::LoadSpellTargetPositions()
         MapEntry const* mapEntry = sMapStore.LookupEntry(st.target_mapId);
         if (!mapEntry)
         {
-            TC_LOG_ERROR("sql.sql", "Spell (Id: %u, EffectIndex: %u) is using a non-existant MapID (ID: %u).", spellId, effIndex, st.target_mapId);
+            TC_LOG_ERROR("sql.sql", "Spell (ID: %u, EffectIndex: %u) is using a non-existant MapID (ID: %u).", Spell_ID, effIndex, st.target_mapId);
             continue;
         }
 
         if (st.target_X == 0 && st.target_Y == 0 && st.target_Z == 0)
         {
-            TC_LOG_ERROR("sql.sql", "Spell (Id: %u, EffectIndex: %u): target coordinates not provided.", spellId, effIndex);
+            TC_LOG_ERROR("sql.sql", "Spell (ID: %u, EffectIndex: %u): target coordinates not provided.", Spell_ID, effIndex);
             continue;
         }
 
-        SpellInfo const* spellInfo = GetSpellInfo(spellId);
+        SpellInfo const* spellInfo = GetSpellInfo(Spell_ID);
         if (!spellInfo)
         {
-            TC_LOG_ERROR("sql.sql", "Spell (Id: %u) listed in `spell_target_position` does not exist.", spellId);
+            TC_LOG_ERROR("sql.sql", "Spell (ID: %u) listed in `spell_target_position` does not exist.", Spell_ID);
             continue;
         }
 
         SpellEffectInfo const* effect = spellInfo->GetEffect(effIndex);
         if (!effect)
         {
-            TC_LOG_ERROR("sql.sql", "Spell (Id: %u, EffectIndex: %u) listed in `spell_target_position` does not have an effect at index %u.", spellId, effIndex, effIndex);
+            TC_LOG_ERROR("sql.sql", "Spell (Id: %u, effIndex: %u) listed in `spell_target_position` does not have an effect at index %u.", Spell_ID, effIndex, effIndex);
             continue;
         }
 
@@ -1741,13 +1756,19 @@ void SpellMgr::LoadSpellTargetPositions()
 
         if (effect->TargetA.GetTarget() == TARGET_DEST_DB || effect->TargetB.GetTarget() == TARGET_DEST_DB)
         {
-            std::pair<uint32, SpellEffIndex> key = std::make_pair(spellId, effIndex);
+            TC_LOG_ERROR("sql.sql", "Spell (Id: %u, effIndex: %u) listed in `spell_target_position` does not have TARGET_DEST_DB as target at index %u.", Spell_ID, effIndex, effIndex);
+            continue;
+        }
+
+        if (effect->TargetA.GetTarget() == TARGET_DEST_DB || effect->TargetB.GetTarget() == TARGET_DEST_DB)
+        {
+            std::pair<uint32, SpellEffIndex> key = std::make_pair(Spell_ID, effIndex);
             mSpellTargetPositions[key] = st;
             ++count;
         }
         else
         {
-            TC_LOG_ERROR("sql.sql", "Spell (Id: %u, EffectIndex: %u) listed in `spell_target_position` does not have target TARGET_DEST_DB (17).", spellId, effIndex);
+            TC_LOG_ERROR("sql.sql", "Spell (Id: %u, effIndex: %u) listed in `spell_target_position` does not have target TARGET_DEST_DB (17).", Spell_ID, effIndex);
             continue;
         }
 
@@ -1755,26 +1776,38 @@ void SpellMgr::LoadSpellTargetPositions()
 
     /*
     // Check all spells
-    for (uint32 i = 1; i < GetSpellInfoStoreSize(); ++i)
+    for (uint32 i = 1; i < GetSpellInfoStoreSize; ++i)
     {
         SpellInfo const* spellInfo = GetSpellInfo(i);
         if (!spellInfo)
             continue;
 
-        for (uint8 j = 0; j < MAX_SPELL_EFFECTS; ++j)
+        bool found = false;
+        for (int j = 0; j < MAX_SPELL_EFFECTS; ++j)
         {
-            SpellEffectInfo const* effect = spellInfo->GetEffect(j);
-            if (!effect)
-                continue;
-
-            if (effect->TargetA.GetTarget() != TARGET_DEST_DB && effect->TargetB.GetTarget() != TARGET_DEST_DB)
-                continue;
-
-            if (!GetSpellTargetPosition(i, SpellEffIndex(j)))
-                TC_LOG_DEBUG("spells", "Spell (Id: %u, EffectIndex: %u) does not have record in `spell_target_position`.", i, j);
+            switch (spellInfo->Effects[j].TargetA)
+            {
+                case TARGET_DEST_DB:
+                    found = true;
+                    break;
+            }
+            if (found)
+                break;
+            switch (spellInfo->Effects[j].TargetB)
+            {
+                case TARGET_DEST_DB:
+                    found = true;
+                    break;
+            }
+            if (found)
+                break;
         }
-    }
-    */
+        if (found)
+        {
+            if (!sSpellMgr->GetSpellTargetPosition(i))
+                TC_LOG_DEBUG("spells", "Spell (ID: %u) does not have record in `spell_target_position`", i);
+        }
+    }*/
 
     TC_LOG_INFO("server.loading", ">> Loaded %u spell teleport coordinates in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
 }
@@ -2858,11 +2891,6 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
         TC_LOG_INFO("server.loading", ">> Loaded %u spell custom attributes from DB in %u ms", count, GetMSTimeDiffToNow(oldMSTime2));
     }
 
-    std::set<uint32> talentSpells;
-    for (uint32 i = 0; i < sTalentStore.GetNumRows(); ++i)
-        if (TalentEntry const* talentInfo = sTalentStore.LookupEntry(i))
-            talentSpells.insert(talentInfo->SpellID);
-
     for (uint32 i = 0; i < GetSpellInfoStoreSize(); ++i)
     {
         spellInfo = mSpellInfoMap[i];
@@ -2975,9 +3003,6 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
 
         if (spellInfo->SpellVisual[0] == 3879)
             spellInfo->AttributesCu |= SPELL_ATTR0_CU_CONE_BACK;
-
-        if (talentSpells.count(spellInfo->Id))
-            spellInfo->AttributesCu |= SPELL_ATTR0_CU_IS_TALENT;
 
         switch (spellInfo->SpellFamilyName)
         {
@@ -3121,8 +3146,6 @@ void SpellMgr::LoadSpellInfoCorrections()
             case 45976: // Muru Portal Channel
             case 52124: // Sky Darkener Assault
             case 53096: // Quetz'lun's Judgment
-            case 70743: // AoD Special
-            case 70614: // AoD Special - Vegard
             case 52479: // Gift of the Harvester
             case 61588: // Blazing Harpoon
                 spellInfo->MaxAffectedTargets = 1;
@@ -3738,7 +3761,7 @@ void SpellMgr::LoadSpellInfoCorrections()
             case 45440: // Steam Tonk Controller
             case 60256: // Collect Sample
                 // Crashes client on pressing ESC
-                spellInfo->AttributesEx4 &= ~SPELL_ATTR4_CAN_CAST_WHILE_CASTING;
+                spellInfo->AttributesEx4 &= ~SPELL_ATTR4_TRIGGERED;
                 break;
             case 96942:  // Gaze of Occu'thar
             case 101009: // Gaze of Occu'thar

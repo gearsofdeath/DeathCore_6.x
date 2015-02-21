@@ -119,11 +119,11 @@ class OPvPCapturePoint
 
         virtual void SendChangePhase();
 
-        virtual bool HandleGossipOption(Player* /*player*/, ObjectGuid /*guid*/, uint32 /*gossipId*/) { return false; }
+        virtual bool HandleGossipOption(Player* player, ObjectGuid guid, uint32 gossipid);
 
-        virtual bool CanTalkTo(Player* /*player*/, Creature* /*creature*/, GossipMenuItems const& /*gso*/) { return false; }
+        virtual bool CanTalkTo(Player* player, Creature* c, GossipMenuItems const& gso);
 
-        virtual bool HandleDropFlag(Player* /*player*/, uint32 /*spellId*/) { return false; }
+        virtual bool HandleDropFlag(Player* player, uint32 spellId);
 
         virtual void DeleteSpawns();
 
@@ -204,7 +204,7 @@ class OutdoorPvP : public ZoneScript
         virtual void FillInitialWorldStates(WorldPacket & /*data*/) { }
 
         // called when a player triggers an areatrigger
-        virtual bool HandleAreaTrigger(Player* /*player*/, uint32 /*trigger*/) { return false; }
+        virtual bool HandleAreaTrigger(Player* player, uint32 trigger);
 
         // called on custom spell
         virtual bool HandleCustomSpell(Player* player, uint32 spellId, GameObject* go);
@@ -274,16 +274,25 @@ class OutdoorPvP : public ZoneScript
         // world state stuff
         virtual void SendRemoveWorldStates(Player* /*player*/) { }
 
-        void BroadcastPacket(WorldPacket const* data) const;
+        void BroadcastPacket(WorldPacket & data) const;
 
         virtual void HandlePlayerEnterZone(Player* player, uint32 zone);
         virtual void HandlePlayerLeaveZone(Player* player, uint32 zone);
 
         virtual void HandlePlayerResurrects(Player* player, uint32 zone);
 
-        void AddCapturePoint(OPvPCapturePoint* cp);
+        void AddCapturePoint(OPvPCapturePoint* cp)
+        {
+            m_capturePoints[cp->m_capturePointGUID] = cp;
+        }
 
-        OPvPCapturePoint * GetCapturePoint(ObjectGuid guid) const;
+        OPvPCapturePoint * GetCapturePoint(ObjectGuid guid) const
+        {
+            OutdoorPvP::OPvPCapturePointMap::const_iterator itr = m_capturePoints.find(guid);
+            if (itr != m_capturePoints.end())
+                return itr->second;
+            return NULL;
+        }
 
         void RegisterZone(uint32 zoneid);
 

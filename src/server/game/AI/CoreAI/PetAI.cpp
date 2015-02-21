@@ -29,7 +29,6 @@
 #include "Util.h"
 #include "Group.h"
 #include "SpellInfo.h"
-#include "SpellHistory.h"
 
 int PetAI::Permissible(const Creature* creature)
 {
@@ -148,7 +147,7 @@ void PetAI::UpdateAI(uint32 diff)
             if (!spellInfo)
                 continue;
 
-            if (me->GetCharmInfo() && me->GetSpellHistory()->HasGlobalCooldown(spellInfo))
+            if (me->GetCharmInfo() && me->GetCharmInfo()->GetGlobalCooldownMgr().HasGlobalCooldown(spellInfo))
                 continue;
 
             if (spellInfo->IsPositive())
@@ -156,7 +155,7 @@ void PetAI::UpdateAI(uint32 diff)
                 if (spellInfo->CanBeUsedInCombat())
                 {
                     // check spell cooldown
-                    if (!me->GetSpellHistory()->IsReady(spellInfo))
+                    if (me->HasSpellCooldown(spellInfo->Id))
                         continue;
 
                     // Check if we're in combat or commanded to attack

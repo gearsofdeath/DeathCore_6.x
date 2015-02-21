@@ -297,7 +297,7 @@ void WorldSession::HandleBattlegroundPlayerPositionsOpcode(WorldPacket& /*recvDa
     ObjectGuid aguid = aplr ? aplr->GetGUID() : ObjectGuid::Empty;
     ObjectGuid hguid = hplr ? hplr->GetGUID() : ObjectGuid::Empty;
 
-    WorldPacket data(SMSG_BATTLEGROUND_PLAYER_POSITIONS);
+    WorldPacket data(SMSG_BATTLEFIELD_PLAYER_POSITIONS);
 
     data.WriteBits(acount, 22);
     for (uint8 i = 0; i < acount; i++)
@@ -788,14 +788,14 @@ void WorldSession::HandleReportPvPAFK(WorldPacket& recvData)
     reportedPlayer->ReportedAfkBy(_player);
 }
 
-void WorldSession::HandleRequestRatedBattlefieldInfo(WorldPacket& recvData)
+void WorldSession::HandleRequestRatedBgInfo(WorldPacket & recvData)
 {
-    TC_LOG_DEBUG("network", "WORLD: CMSG_REQUEST_RATED_BATTLEFIELD_INFO");
+    TC_LOG_DEBUG("network", "WORLD: CMSG_REQUEST_RATED_BG_INFO");
 
     uint8 unk;
     recvData >> unk;
 
-    TC_LOG_DEBUG("bg.battleground", "WorldSession::HandleRequestRatedBattlefieldInfo: unk = %u", unk);
+    TC_LOG_DEBUG("bg.battleground", "WorldSession::HandleRequestRatedBgInfo: unk = %u", unk);
 
     /// @Todo: perfome research in this case
     /// The unk fields are related to arenas

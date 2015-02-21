@@ -51,7 +51,6 @@
 #include "SpellAuras.h"
 #include "Spell.h"
 #include "SpellInfo.h"
-#include "SpellHistory.h"
 #include "SpellMgr.h"
 #include "TemporarySummon.h"
 #include "Totem.h"
@@ -64,7 +63,6 @@
 #include "MovementStructures.h"
 #include "WorldSession.h"
 #include "ChatPackets.h"
-#include "MiscPackets.h"
 #include "MovementPackets.h"
 #include "CombatPackets.h"
 #include "CombatLogPackets.h"
@@ -163,30 +161,6 @@ ProcEventInfo::ProcEventInfo(Unit* actor, Unit* actionTarget, Unit* procTarget,
     _damageInfo(damageInfo), _healInfo(healInfo)
 { }
 
-SpellInfo const* ProcEventInfo::GetSpellInfo() const
-{
-    /// WORKAROUND: unfinished new proc system
-    if (_spell)
-        return _spell->GetSpellInfo();
-    if (_damageInfo)
-        return _damageInfo->GetSpellInfo();
-    /*if (_healInfo)
-        return _healInfo->GetSpellInfo();*/
-    return nullptr;
-}
-
-SpellSchoolMask ProcEventInfo::GetSchoolMask() const
-{
-    /// WORKAROUND: unfinished new proc system
-    if (_spell)
-        return _spell->GetSpellInfo()->GetSchoolMask();
-    if (_damageInfo)
-        return _damageInfo->GetSchoolMask();
-    /*if (_healInfo)
-        return _healInfo->GetSchoolMask();*/
-    return SPELL_SCHOOL_MASK_NONE;
-}
-
 Unit::Unit(bool isWorldObject) :
     WorldObject(isWorldObject), m_movedPlayer(NULL), m_lastSanctuaryTime(0),
     IsAIEnabled(false), NeedChangeAI(false), LastCharmerGUID(),
@@ -194,7 +168,7 @@ Unit::Unit(bool isWorldObject) :
     i_AI(NULL), i_disabledAI(NULL), m_AutoRepeatFirstCast(false), m_procDeep(0),
     m_removedAurasCount(0), i_motionMaster(new MotionMaster(this)), m_regenTimer(0), m_ThreatManager(this),
     m_vehicle(NULL), m_vehicleKit(NULL), m_unitTypeMask(UNIT_MASK_NONE),
-    m_HostileRefManager(this), _lastDamagedTime(0), _spellHistory(new SpellHistory(this))
+    m_HostileRefManager(this), _lastDamagedTime(0)
 {
     m_objectType |= TYPEMASK_UNIT;
     m_objectTypeId = TYPEID_UNIT;
@@ -291,6 +265,24 @@ Unit::Unit(bool isWorldObject) :
 }
 
 ////////////////////////////////////////////////////////////
+// Methods of class GlobalCooldownMgr
+bool GlobalCooldownMgr::HasGlobalCooldown(SpellInfo const* spellInfo) const
+{
+    GlobalCooldownList::const_iterator itr = m_GlobalCooldowns.find(spellInfo->StartRecoveryCategory);
+    return itr != m_GlobalCooldowns.end() && itr->second.duration && getMSTimeDiff(itr->second.cast_time, getMSTime()) < itr->second.duration;
+}
+
+void GlobalCooldownMgr::AddGlobalCooldown(SpellInfo const* spellInfo, uint32 gcd)
+{
+    m_GlobalCooldowns[spellInfo->StartRecoveryCategory] = GlobalCooldown(gcd, getMSTime());
+}
+
+void GlobalCooldownMgr::CancelGlobalCooldown(SpellInfo const* spellInfo)
+{
+    m_GlobalCooldowns[spellInfo->StartRecoveryCategory].duration = 0;
+}
+
+////////////////////////////////////////////////////////////
 // Methods of class Unit
 Unit::~Unit()
 {
@@ -307,7 +299,6 @@ Unit::~Unit()
     delete i_motionMaster;
     delete m_charmInfo;
     delete movespline;
-    delete _spellHistory;
 
     ASSERT(!m_duringRemoveFromWorld);
     ASSERT(!m_attacking);
@@ -2108,11 +2099,21 @@ void Unit::SendMeleeAttackStart(Unit* victim)
     packet.Attacker = GetGUID();
     packet.Victim = victim->GetGUID();
     SendMessageToSet(packet.Write(), true);
+    TC_LOG_DEBUG("entities.unit", "WORLD: Sent SMSG_ATTACKSTART");
 }
 
 void Unit::SendMeleeAttackStop(Unit* victim)
 {
-    SendMessageToSet(WorldPackets::Combat::SAttackStop(this, victim).Write(), true);
+    WorldPackets::Combat::SAttackStop packet;
+    packet.Attacker = GetGUID();
+    if (victim)
+    {
+        packet.Victim = victim->GetGUID();
+        packet.Dead = victim->isDead();
+    }
+
+    SendMessageToSet(packet.Write(), true);
+    TC_LOG_DEBUG("entities.unit", "WORLD: Sent SMSG_ATTACKSTOP");
 
     if (victim)
         TC_LOG_INFO("entities.unit", "%s stopped attacking %s", GetGUID().ToString().c_str(), victim->GetGUID().ToString().c_str());
@@ -2373,9 +2374,11 @@ SpellMissInfo Unit::MagicSpellHitResult(Unit* victim, SpellInfo const* spellInfo
     int32 leveldif = int32(victim->getLevelForTarget(this)) - thisLevel;
 
     // Base hit chance from attacker and victim levels
-    int32 modHitChance = 100;
-    if (leveldif > 3)
-        modHitChance -= (leveldif - 3) * lchance;
+    int32 modHitChance;
+    if (leveldif < 3)
+        modHitChance = 96 - leveldif;
+    else
+        modHitChance = 94 - (leveldif - 2) * lchance;
 
     // Spellmod from SPELLMOD_RESIST_MISS_CHANCE
     if (Player* modOwner = GetSpellModOwner())
@@ -2683,8 +2686,6 @@ void Unit::_UpdateSpells(uint32 time)
                 ++itr;
         }
     }
-
-    _spellHistory->Update();
 }
 
 void Unit::_UpdateAutoRepeatSpell()
@@ -4624,13 +4625,13 @@ void Unit::AddGameObject(GameObject* gameObj)
     m_gameObj.push_back(gameObj);
     gameObj->SetOwnerGUID(GetGUID());
 
-    if (gameObj->GetSpellId())
+    if (GetTypeId() == TYPEID_PLAYER && gameObj->GetSpellId())
     {
         SpellInfo const* createBySpell = sSpellMgr->GetSpellInfo(gameObj->GetSpellId());
         // Need disable spell use for owner
         if (createBySpell && createBySpell->IsCooldownStartedOnEvent())
             // note: item based cooldowns and cooldown spell mods with charges ignored (unknown existing cases)
-            GetSpellHistory()->StartCooldown(createBySpell, 0, nullptr, true);
+            ToPlayer()->AddSpellAndCategoryCooldowns(createBySpell, 0, NULL, true);
     }
 }
 
@@ -4655,11 +4656,14 @@ void Unit::RemoveGameObject(GameObject* gameObj, bool del)
     {
         RemoveAurasDueToSpell(spellid);
 
-        SpellInfo const* createBySpell = sSpellMgr->GetSpellInfo(spellid);
-        // Need activate spell use for owner
-        if (createBySpell && createBySpell->IsCooldownStartedOnEvent())
-            // note: item based cooldowns and cooldown spell mods with charges ignored (unknown existing cases)
-            GetSpellHistory()->SendCooldownEvent(createBySpell);
+        if (GetTypeId() == TYPEID_PLAYER)
+        {
+            SpellInfo const* createBySpell = sSpellMgr->GetSpellInfo(spellid);
+            // Need activate spell use for owner
+            if (createBySpell && createBySpell->IsCooldownStartedOnEvent())
+                // note: item based cooldowns and cooldown spell mods with charges ignored (unknown existing cases)
+                ToPlayer()->SendCooldownEvent(createBySpell);
+        }
     }
 
     m_gameObj.remove(gameObj);
@@ -4813,7 +4817,7 @@ void Unit::SendSpellMiss(Unit* target, uint32 spellID, SpellMissInfo missInfo)
 
 void Unit::SendSpellDamageResist(Unit* target, uint32 spellId)
 {
-    WorldPacket data(SMSG_PROC_RESIST, 8+8+4+1);
+    WorldPacket data(SMSG_PROCRESIST, 8+8+4+1);
     data << GetGUID();
     data << target->GetGUID();
     data << uint32(spellId);
@@ -5193,12 +5197,12 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                     if (RandomSpells.empty()) // shouldn't happen
                         return false;
 
-                    uint8 rand_spell = urand(0, (RandomSpells.size() - 1));
+                    uint8 rand_spell = irand(0, (RandomSpells.size() - 1));
                     CastSpell(target, RandomSpells[rand_spell], true, castItem, triggeredByAura, originalCaster);
                     for (std::vector<uint32>::iterator itr = RandomSpells.begin(); itr != RandomSpells.end(); ++itr)
                     {
-                        if (!GetSpellHistory()->HasCooldown(*itr))
-                            GetSpellHistory()->AddCooldown(*itr, 0, std::chrono::seconds(cooldown));
+                        if (!ToPlayer()->HasSpellCooldown(*itr))
+                            ToPlayer()->AddSpellCooldown(*itr, 0, time(NULL) + cooldown);
                     }
                     break;
                 }
@@ -5239,12 +5243,12 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                     if (RandomSpells.empty()) // shouldn't happen
                         return false;
 
-                    uint8 rand_spell = urand(0, (RandomSpells.size() - 1));
+                    uint8 rand_spell = irand(0, (RandomSpells.size() - 1));
                     CastSpell(target, RandomSpells[rand_spell], true, castItem, triggeredByAura, originalCaster);
                     for (std::vector<uint32>::iterator itr = RandomSpells.begin(); itr != RandomSpells.end(); ++itr)
                     {
-                        if (!GetSpellHistory()->HasCooldown(*itr))
-                            GetSpellHistory()->AddCooldown(*itr, 0, std::chrono::seconds(cooldown));
+                        if (!ToPlayer()->HasSpellCooldown(*itr))
+                            ToPlayer()->AddSpellCooldown(*itr, 0, time(NULL) + cooldown);
                     }
                     break;
                 }
@@ -5824,7 +5828,7 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                         return false;
 
                     // custom cooldown processing case
-                    if (cooldown && GetSpellHistory()->HasCooldown(dummySpell->Id))
+                    if (cooldown && player->HasSpellCooldown(dummySpell->Id))
                         return false;
 
                     if (triggeredByAura->GetBase() && castItem->GetGUID() != triggeredByAura->GetBase()->GetCastItemGUID())
@@ -5871,7 +5875,7 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
 
                     // apply cooldown before cast to prevent processing itself
                     if (cooldown)
-                        player->GetSpellHistory()->AddCooldown(dummySpell->Id, 0, std::chrono::seconds(cooldown));
+                        player->AddSpellCooldown(dummySpell->Id, 0, time(NULL) + cooldown);
 
                     // Attack Twice
                     for (uint32 i = 0; i < 2; ++i)
@@ -6010,7 +6014,10 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                 {
                     uint32 spell = 26364;
 
-                    GetSpellHistory()->ResetCooldown(spell);
+                    // custom cooldown processing case
+                    if (GetTypeId() == TYPEID_PLAYER && ToPlayer()->HasSpellCooldown(spell))
+                        ToPlayer()->RemoveSpellCooldown(spell);
+
                     CastSpell(target, spell, true, castItem, triggeredByAura);
                     return true;
                 }
@@ -6109,7 +6116,7 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
     if (cooldown_spell_id == 0)
         cooldown_spell_id = triggered_spell_id;
 
-    if (cooldown && GetTypeId() == TYPEID_PLAYER && GetSpellHistory()->HasCooldown(cooldown_spell_id))
+    if (cooldown && GetTypeId() == TYPEID_PLAYER && ToPlayer()->HasSpellCooldown(cooldown_spell_id))
         return false;
 
     if (basepoints0)
@@ -6117,8 +6124,8 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
     else
         CastSpell(target, triggered_spell_id, true, castItem, triggeredByAura, originalCaster);
 
-    if (cooldown)
-        GetSpellHistory()->AddCooldown(cooldown_spell_id, 0, std::chrono::seconds(cooldown));
+    if (cooldown && GetTypeId() == TYPEID_PLAYER)
+        ToPlayer()->AddSpellCooldown(cooldown_spell_id, 0, time(NULL) + cooldown);
 
     return true;
 }
@@ -6265,10 +6272,9 @@ bool Unit::HandleAuraProc(Unit* victim, uint32 /*damage*/, Aura* triggeredByAura
                     *handled = true;
                     if (cooldown && GetTypeId() == TYPEID_PLAYER)
                     {
-                        if (GetSpellHistory()->HasCooldown(100000))
+                        if (ToPlayer()->HasSpellCooldown(100000))
                             return false;
-
-                        GetSpellHistory()->AddCooldown(100000, 0, std::chrono::seconds(cooldown));
+                        ToPlayer()->AddSpellCooldown(100000, 0, time(NULL) + cooldown);
                     }
                     return true;
                 }
@@ -6782,7 +6788,7 @@ bool Unit::HandleProcTriggerSpell(Unit* victim, uint32 damage, AuraEffect* trigg
         }
     }
 
-    if (cooldown && GetTypeId() == TYPEID_PLAYER && GetSpellHistory()->HasCooldown(trigger_spell_id))
+    if (cooldown && GetTypeId() == TYPEID_PLAYER && ToPlayer()->HasSpellCooldown(trigger_spell_id))
         return false;
 
     // extra attack should hit same target
@@ -6798,8 +6804,8 @@ bool Unit::HandleProcTriggerSpell(Unit* victim, uint32 damage, AuraEffect* trigg
     else
         CastSpell(target, trigger_spell_id, true, castItem, triggeredByAura);
 
-    if (cooldown)
-        GetSpellHistory()->AddCooldown(trigger_spell_id, 0, std::chrono::seconds(cooldown));
+    if (cooldown && GetTypeId() == TYPEID_PLAYER)
+        ToPlayer()->AddSpellCooldown(trigger_spell_id, 0, time(NULL) + cooldown);
 
     return true;
 }
@@ -6854,13 +6860,13 @@ bool Unit::HandleOverrideClassScriptAuraProc(Unit* victim, uint32 /*damage*/, Au
         return false;
     }
 
-    if (cooldown && GetTypeId() == TYPEID_PLAYER && ToPlayer()->GetSpellHistory()->HasCooldown(triggered_spell_id))
+    if (cooldown && GetTypeId() == TYPEID_PLAYER && ToPlayer()->HasSpellCooldown(triggered_spell_id))
         return false;
 
     CastSpell(victim, triggered_spell_id, true, castItem, triggeredByAura);
 
-    if (cooldown)
-        GetSpellHistory()->AddCooldown(triggered_spell_id, 0, std::chrono::seconds(cooldown));
+    if (cooldown && GetTypeId() == TYPEID_PLAYER)
+        ToPlayer()->AddSpellCooldown(triggered_spell_id, 0, time(NULL) + cooldown);
 
     return true;
 }
@@ -7593,11 +7599,14 @@ void Unit::SetMinion(Minion *minion, bool apply)
         if (minion->IsPetGhoul())
             minion->setPowerType(POWER_ENERGY);
 
-        // Send infinity cooldown - client does that automatically but after relog cooldown needs to be set again
-        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(minion->GetUInt32Value(UNIT_CREATED_BY_SPELL));
+        if (GetTypeId() == TYPEID_PLAYER)
+        {
+            // Send infinity cooldown - client does that automatically but after relog cooldown needs to be set again
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(minion->GetUInt32Value(UNIT_CREATED_BY_SPELL));
 
-        if (spellInfo && (spellInfo->IsCooldownStartedOnEvent()))
-            GetSpellHistory()->StartCooldown(spellInfo, 0, nullptr, true);
+            if (spellInfo && (spellInfo->IsCooldownStartedOnEvent()))
+                ToPlayer()->AddSpellAndCategoryCooldowns(spellInfo, 0, NULL, true);
+        }
     }
     else
     {
@@ -7631,10 +7640,13 @@ void Unit::SetMinion(Minion *minion, bool apply)
                     }
         }
 
-        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(minion->GetUInt32Value(UNIT_CREATED_BY_SPELL));
-        // Remove infinity cooldown
-        if (spellInfo && (spellInfo->IsCooldownStartedOnEvent()))
-            GetSpellHistory()->SendCooldownEvent(spellInfo);
+        if (GetTypeId() == TYPEID_PLAYER)
+        {
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(minion->GetUInt32Value(UNIT_CREATED_BY_SPELL));
+            // Remove infinity cooldown
+            if (spellInfo && (spellInfo->IsCooldownStartedOnEvent()))
+                ToPlayer()->SendCooldownEvent(spellInfo);
+        }
 
         //if (minion->HasUnitTypeMask(UNIT_MASK_GUARDIAN))
         {
@@ -8463,7 +8475,7 @@ int32 Unit::SpellBaseDamageBonusDone(SpellSchoolMask schoolMask) const
 
         // Check if we are ever using mana - PaperDollFrame.lua
         if (GetPowerIndex(POWER_MANA) != MAX_POWERS)
-            DoneAdvertisedBenefit += std::max(0, int32(GetStat(STAT_INTELLECT)));  // spellpower from intellect
+            DoneAdvertisedBenefit += std::max(0, int32(GetStat(STAT_INTELLECT)) - 10);  // spellpower from intellect
 
         // Damage bonus from stats
         AuraEffectList const& mDamageDoneOfStatPercent = GetAuraEffectsByType(SPELL_AURA_MOD_SPELL_DAMAGE_OF_STAT_PERCENT);
@@ -9030,7 +9042,7 @@ int32 Unit::SpellBaseHealingBonusDone(SpellSchoolMask schoolMask) const
 
         // Check if we are ever using mana - PaperDollFrame.lua
         if (GetPowerIndex(POWER_MANA) != MAX_POWERS)
-            advertisedBenefit += std::max(0, int32(GetStat(STAT_INTELLECT)));  // spellpower from intellect
+            advertisedBenefit += std::max(0, int32(GetStat(STAT_INTELLECT)) - 10);  // spellpower from intellect
 
         // Healing bonus from stats
         AuraEffectList const& mHealingDoneOfStatPercent = GetAuraEffectsByType(SPELL_AURA_MOD_SPELL_HEALING_OF_STAT_PERCENT);
@@ -9638,12 +9650,12 @@ MountCapabilityEntry const* Unit::GetMountCapability(uint32 mountType) const
 
         if (HasExtraUnitMovementFlag(MOVEMENTFLAG2_FULL_SPEED_PITCHING))
         {
-            if (!(mountCapability->Flags & MOUNT_CAPABILITY_FLAG_CAN_PITCH))
+            if (!(mountCapability->Flags & MOUNT_FLAG_CAN_PITCH))
                 continue;
         }
         else if (HasUnitMovementFlag(MOVEMENTFLAG_SWIMMING))
         {
-            if (!(mountCapability->Flags & MOUNT_CAPABILITY_FLAG_CAN_SWIM))
+            if (!(mountCapability->Flags & MOUNT_FLAG_CAN_SWIM))
                 continue;
         }
         else if (!(mountCapability->Flags & 0x1))   // unknown flags, checked in 4.2.2 14545 client
@@ -10396,20 +10408,20 @@ void Unit::SetSpeed(UnitMoveType mtype, float rate, bool forced)
         WorldPackets::Movement::MoveSetSpeed selfpacket(moveTypeToOpcode[mtype][1]);
         selfpacket.MoverGUID = GetGUID();
         selfpacket.SequenceIndex = m_movementCounter++;
-        selfpacket.Speed = GetSpeed(mtype);
+        selfpacket.Speed = rate;
         ToPlayer()->GetSession()->SendPacket(selfpacket.Write());
 
         // Send notification to other players
         WorldPackets::Movement::MoveUpdateSpeed packet(moveTypeToOpcode[mtype][2]);
         packet.movementInfo = &m_movementInfo;
-        packet.Speed = GetSpeed(mtype);
+        packet.Speed = rate;
         SendMessageToSet(packet.Write(), false);
     }
     else
     {
         WorldPackets::Movement::MoveSplineSetSpeed packet(moveTypeToOpcode[mtype][0]);
         packet.MoverGUID = GetGUID();
-        packet.Speed = GetSpeed(mtype);
+        packet.Speed = rate;
         SendMessageToSet(packet.Write(), true);
     }
 }
@@ -11430,11 +11442,12 @@ void Unit::SetPower(Powers power, int32 val)
 
     if (IsInWorld())
     {
-        WorldPackets::Combat::PowerUpdate packet;
-        packet.Guid = GetGUID();
-        /// @todo: Support multiple counts ?
-        packet.Powers.emplace_back(val, powerIndex);
-        SendMessageToSet(packet.Write(), GetTypeId() == TYPEID_PLAYER);
+        WorldPacket data(SMSG_POWER_UPDATE, 8 + 4 + 1 + 4);
+        data << GetPackGUID();
+        data << uint32(1); //power count
+        data << uint8(powerIndex);
+        data << int32(val);
+        SendMessageToSet(&data, GetTypeId() == TYPEID_PLAYER);
     }
 
     // group update
@@ -12562,7 +12575,7 @@ void Unit::StopMoving()
 
 bool Unit::IsSitState() const
 {
-    UnitStandStateType s = GetStandState();
+    uint8 s = getStandState();
     return
         s == UNIT_STAND_STATE_SIT_CHAIR        || s == UNIT_STAND_STATE_SIT_LOW_CHAIR  ||
         s == UNIT_STAND_STATE_SIT_MEDIUM_CHAIR || s == UNIT_STAND_STATE_SIT_HIGH_CHAIR ||
@@ -12571,21 +12584,22 @@ bool Unit::IsSitState() const
 
 bool Unit::IsStandState() const
 {
-    UnitStandStateType s = GetStandState();
+    uint8 s = getStandState();
     return !IsSitState() && s != UNIT_STAND_STATE_SLEEP && s != UNIT_STAND_STATE_KNEEL;
 }
 
-void Unit::SetStandState(UnitStandStateType state)
+void Unit::SetStandState(uint8 state)
 {
-    SetByteValue(UNIT_FIELD_BYTES_1, 0, uint8(state));
+    SetByteValue(UNIT_FIELD_BYTES_1, 0, state);
 
     if (IsStandState())
        RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_NOT_SEATED);
 
     if (GetTypeId() == TYPEID_PLAYER)
     {
-        WorldPackets::Misc::StandStateUpdate packet(state);
-        ToPlayer()->GetSession()->SendPacket(packet.Write());
+        WorldPacket data(SMSG_STANDSTATE_UPDATE, 1);
+        data << (uint8)state;
+        ToPlayer()->GetSession()->SendPacket(&data);
     }
 }
 
@@ -14540,7 +14554,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 // Based on Hair color
                 if (getRace() == RACE_NIGHTELF)
                 {
-                    uint8 hairColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_COLOR_ID);
+                    uint8 hairColor = GetByteValue(PLAYER_BYTES, 3);
                     switch (hairColor)
                     {
                         case 7: // Violet
@@ -14560,7 +14574,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 }
                 else if (getRace() == RACE_TROLL)
                 {
-                    uint8 hairColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_COLOR_ID);
+                    uint8 hairColor = GetByteValue(PLAYER_BYTES, 3);
                     switch (hairColor)
                     {
                         case 0: // Red
@@ -14583,7 +14597,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 else if (getRace() == RACE_WORGEN)
                 {
                     // Based on Skin color
-                    uint8 skinColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_SKIN_ID);
+                    uint8 skinColor = GetByteValue(PLAYER_BYTES, 0);
                     // Male
                     if (getGender() == GENDER_MALE)
                     {
@@ -14627,7 +14641,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 // Based on Skin color
                 else if (getRace() == RACE_TAUREN)
                 {
-                    uint8 skinColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_SKIN_ID);
+                    uint8 skinColor = GetByteValue(PLAYER_BYTES, 0);
                     // Male
                     if (getGender() == GENDER_MALE)
                     {
@@ -14688,7 +14702,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 // Based on Hair color
                 if (getRace() == RACE_NIGHTELF)
                 {
-                    uint8 hairColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_COLOR_ID);
+                    uint8 hairColor = GetByteValue(PLAYER_BYTES, 3);
                     switch (hairColor)
                     {
                         case 0: // Green
@@ -14707,7 +14721,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 }
                 else if (getRace() == RACE_TROLL)
                 {
-                    uint8 hairColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_HAIR_COLOR_ID);
+                    uint8 hairColor = GetByteValue(PLAYER_BYTES, 3);
                     switch (hairColor)
                     {
                         case 0: // Red
@@ -14731,7 +14745,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 else if (getRace() == RACE_WORGEN)
                 {
                     // Based on Skin color
-                    uint8 skinColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_SKIN_ID);
+                    uint8 skinColor = GetByteValue(PLAYER_BYTES, 0);
                     // Male
                     if (getGender() == GENDER_MALE)
                     {
@@ -14775,7 +14789,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                 // Based on Skin color
                 else if (getRace() == RACE_TAUREN)
                 {
-                    uint8 skinColor = GetByteValue(PLAYER_BYTES, PLAYER_BYTES_OFFSET_SKIN_ID);
+                    uint8 skinColor = GetByteValue(PLAYER_BYTES, 0);
                     // Male
                     if (getGender() == GENDER_MALE)
                     {
@@ -14847,7 +14861,6 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
                     return 37174;
                 if (getRace() == RACE_WORGEN)
                     return 37173;
-                break;
             case FORM_GHOSTWOLF:
                 if (HasAura(58135)) //! Glyph of Arctic Wolf
                     return 27312;
@@ -16362,6 +16375,27 @@ void Unit::DestroyForPlayer(Player* target) const
     WorldObject::DestroyForPlayer(target);
 }
 
+void Unit::BuildCooldownPacket(WorldPacket& data, uint8 flags, uint32 spellId, uint32 cooldown)
+{
+    data.Initialize(SMSG_SPELL_COOLDOWN, 8 + 1 + 4 + 4);
+    data << GetGUID();
+    data << uint8(flags);
+    data << uint32(spellId);
+    data << uint32(cooldown);
+}
+
+void Unit::BuildCooldownPacket(WorldPacket& data, uint8 flags, PacketCooldowns const& cooldowns)
+{
+    data.Initialize(SMSG_SPELL_COOLDOWN, 8 + 1 + (4 + 4) * cooldowns.size());
+    data << GetGUID();
+    data << uint8(flags);
+    for (std::unordered_map<uint32, uint32>::const_iterator itr = cooldowns.begin(); itr != cooldowns.end(); ++itr)
+    {
+        data << uint32(itr->first);
+        data << uint32(itr->second);
+    }
+}
+
 int32 Unit::GetHighestExclusiveSameEffectSpellGroupValue(AuraEffect const* aurEff, AuraType auraType, bool checkMiscValue /*= false*/, int32 miscValue /*= 0*/) const
 {
     int32 val = 0;
@@ -16510,19 +16544,4 @@ void Unit::Whisper(uint32 textId, Player* target, bool isBossWhisper /*= false*/
     WorldPackets::Chat::Chat packet;
     packet.Initalize(isBossWhisper ? CHAT_MSG_RAID_BOSS_WHISPER : CHAT_MSG_MONSTER_WHISPER, LANG_UNIVERSAL, this, target, DB2Manager::GetBroadcastTextValue(bct, locale, getGender()), 0, "", locale);
     target->SendDirectMessage(packet.Write());
-}
-
-SpellInfo const* Unit::GetCastSpellInfo(SpellInfo const* spellInfo) const
-{
-    Unit::AuraEffectList swaps = GetAuraEffectsByType(SPELL_AURA_OVERRIDE_ACTIONBAR_SPELLS);
-    Unit::AuraEffectList const& swaps2 = GetAuraEffectsByType(SPELL_AURA_OVERRIDE_ACTIONBAR_SPELLS_2);
-    if (!swaps2.empty())
-        swaps.insert(swaps.end(), swaps2.begin(), swaps2.end());
-
-    for (AuraEffect const* auraEffect : swaps)
-        if (auraEffect->IsAffectingSpell(spellInfo))
-            if (SpellInfo const* newInfo = sSpellMgr->GetSpellInfo(auraEffect->GetAmount()))
-                return newInfo;
-
-    return spellInfo;
 }

@@ -414,6 +414,19 @@ void LootItem::AddAllowedLooter(const Player* player)
     allowedGUIDs.insert(player->GetGUID());
 }
 
+void LootItem::BuildItemInstance(WorldPackets::Item::ItemInstance& instance) const
+{
+    instance.ItemID = itemid;
+    instance.RandomPropertiesSeed = randomSuffix;
+    instance.RandomPropertiesID = randomPropertyId;
+    if (!BonusListIDs.empty())
+    {
+        WorldPackets::Item::ItemBonusInstanceData bonusData;
+        instance.ItemBonus.Value.BonusListIDs = BonusListIDs;
+        instance.ItemBonus.HasValue = true;
+    }
+}
+
 //
 // --------- Loot ---------
 //
@@ -921,7 +934,7 @@ void Loot::BuildLootResponse(WorldPackets::Loot::LootResponse& packet, Player* v
                     lootItem.LootListID = packet.Items.size()+1;
                     lootItem.LootItemType = slot_type;
                     lootItem.Quantity = items[i].count;
-                    lootItem.Loot.Initalize(items[i]);
+                    items[i].BuildItemInstance(lootItem.Loot);
                     packet.Items.push_back(lootItem);
                 }
             }
@@ -941,7 +954,7 @@ void Loot::BuildLootResponse(WorldPackets::Loot::LootResponse& packet, Player* v
                     lootItem.LootListID = packet.Items.size()+1;
                     lootItem.LootItemType = LOOT_SLOT_TYPE_ALLOW_LOOT;
                     lootItem.Quantity = items[i].count;
-                    lootItem.Loot.Initalize(items[i]);
+                    items[i].BuildItemInstance(lootItem.Loot);
                     packet.Items.push_back(lootItem);
                 }
             }
@@ -958,7 +971,7 @@ void Loot::BuildLootResponse(WorldPackets::Loot::LootResponse& packet, Player* v
                     lootItem.LootListID = packet.Items.size()+1;
                     lootItem.LootItemType = LOOT_SLOT_TYPE_ALLOW_LOOT;
                     lootItem.Quantity = items[i].count;
-                    lootItem.Loot.Initalize(items[i]);
+                    items[i].BuildItemInstance(lootItem.Loot);
                     packet.Items.push_back(lootItem);
                 }
             }
@@ -981,7 +994,7 @@ void Loot::BuildLootResponse(WorldPackets::Loot::LootResponse& packet, Player* v
                 WorldPackets::Loot::LootItem lootItem;
                 lootItem.LootListID = packet.Items.size()+1;
                 lootItem.Quantity = item.count;
-                lootItem.Loot.Initalize(item);
+                item.BuildItemInstance(lootItem.Loot);
 
                 if (item.follow_loot_rules)
                 {
@@ -1027,7 +1040,7 @@ void Loot::BuildLootResponse(WorldPackets::Loot::LootResponse& packet, Player* v
                 lootItem.LootListID = packet.Items.size()+1;
                 lootItem.LootItemType = LOOT_SLOT_TYPE_ALLOW_LOOT;
                 lootItem.Quantity = item.count;
-                lootItem.Loot.Initalize(item);
+                item.BuildItemInstance(lootItem.Loot);
                 packet.Items.push_back(lootItem);
             }
         }
@@ -1046,7 +1059,7 @@ void Loot::BuildLootResponse(WorldPackets::Loot::LootResponse& packet, Player* v
                 WorldPackets::Loot::LootItem lootItem;
                 lootItem.LootListID = packet.Items.size()+1;
                 lootItem.Quantity = item.count;
-                lootItem.Loot.Initalize(item);
+                item.BuildItemInstance(lootItem.Loot);
 
                 if (item.follow_loot_rules)
                 {

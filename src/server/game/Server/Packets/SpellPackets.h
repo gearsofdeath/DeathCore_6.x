@@ -27,17 +27,6 @@ namespace WorldPackets
 {
     namespace Spells
     {
-        class CancelAura final : public ClientPacket
-        {
-        public:
-            CancelAura(WorldPacket&& packet) : ClientPacket(CMSG_CANCEL_AURA, std::move(packet)) { }
-
-            void Read() override;
-
-            ObjectGuid CasterGUID;
-            int32 SpellID = 0;
-        };
-
         class CategoryCooldown final : public ServerPacket
         {
         public:
@@ -155,6 +144,46 @@ namespace WorldPackets
             std::vector<AuraInfo> Auras;
         };
 
+        class SpellCastRequest final : public ClientPacket
+        {
+        public:
+            struct SpellWeight
+            {
+                uint32 Type = 0;
+                int32 ID = 0;
+                uint32 Quantity = 0;
+            };
+
+            SpellCastRequest(WorldPacket&& packet) : ClientPacket(std::move(packet))
+            {
+                ASSERT(packet.GetOpcode() == CMSG_CAST_SPELL || packet.GetOpcode() == CMSG_PET_CAST_SPELL);
+            }
+
+            void Read() override;
+
+            ObjectGuid PetGuid;
+            uint8 CastID = 0;
+            uint32 SpellID = 0;
+            uint32 Misc = 0;
+            uint32 TargetFlags = 0;
+            ObjectGuid UnitGuid;
+            ObjectGuid ItemGuid;
+
+            ObjectGuid SrcTransportGuid;
+            ObjectGuid DstTransportGuid;
+            Position SrcPos;
+            Position DstPos;
+            float Orientation = 0.0f;
+
+            std::string Name;
+            float Pitch = 0.0f;
+            float Speed = 0.0f;
+            ObjectGuid Guid;
+            uint32 SendCastFlags = 0;
+
+            MovementInfo movementInfo;
+        };
+
         struct TargetLocation
         {
             ObjectGuid Transport;
@@ -168,68 +197,8 @@ namespace WorldPackets
             ObjectGuid Item;
             Optional<TargetLocation> SrcLocation;
             Optional<TargetLocation> DstLocation;
-            Optional<float> Orientation;
+            Optional<float> Orientation; // Not found in JAM structures
             std::string Name;
-        };
-
-        struct MissileTrajectoryRequest
-        {
-            float Pitch = 0.0f;
-            float Speed = 0.0f;
-        };
-
-        struct SpellWeight
-        {
-            uint32 Type = 0;
-            int32 ID = 0;
-            uint32 Quantity = 0;
-        };
-
-        struct SpellCastRequest
-        {
-            uint8 CastID = 0;
-            int32 SpellID = 0;
-            int32 Misc = 0;
-            uint8 SendCastFlags = 0;
-            SpellTargetData Target;
-            MissileTrajectoryRequest MissileTrajectory;
-            Optional<MovementInfo> MoveUpdate;
-            std::vector<SpellWeight> Weight;
-            ObjectGuid Charmer;
-        };
-
-        class CastSpell final : public ClientPacket
-        {
-        public:
-            CastSpell(WorldPacket&& packet) : ClientPacket(CMSG_CAST_SPELL, std::move(packet)) { }
-
-            void Read() override;
-
-            SpellCastRequest Cast;
-        };
-
-        class PetCastSpell final : public ClientPacket
-        {
-        public:
-            PetCastSpell(WorldPacket&& packet) : ClientPacket(CMSG_PET_CAST_SPELL, std::move(packet)) { }
-
-            void Read() override;
-
-            ObjectGuid PetGUID;
-            SpellCastRequest Cast;
-        };
-
-        class UseItem final : public ClientPacket
-        {
-        public:
-            UseItem(WorldPacket&& packet) : ClientPacket(CMSG_USE_ITEM, std::move(packet)) { }
-
-            void Read() override;
-
-            uint8 PackSlot;
-            uint8 Slot;
-            ObjectGuid CastItem;
-            SpellCastRequest Cast;
         };
 
         struct SpellMissStatus
@@ -399,156 +368,31 @@ namespace WorldPackets
             std::vector<SpellModifier> Modifiers;
         };
 
-        class UnlearnedSpells final : public ServerPacket
+        class SendRemovedSpell final : public ServerPacket
         {
         public:
-            UnlearnedSpells() : ServerPacket(SMSG_UNLEARNED_SPELLS, 4) { }
+            SendRemovedSpell() : ServerPacket(SMSG_REMOVED_SPELL, 4) { }
 
             WorldPacket const* Write() override;
 
-            std::vector<uint32> SpellID;
-        };
-
-        class CooldownEvent final : public ServerPacket
-        {
-        public:
-            CooldownEvent() : ServerPacket(SMSG_COOLDOWN_EVENT, 16 + 4) { }
-            CooldownEvent(ObjectGuid casterGuid, int32 spellId) : ServerPacket(SMSG_COOLDOWN_EVENT, 16 + 4), CasterGUID(casterGuid), SpellID(spellId) { }
-
-            WorldPacket const* Write() override;
-
-            ObjectGuid CasterGUID;
-            int32 SpellID;
-        };
-
-        class ClearCooldowns final : public ServerPacket
-        {
-        public:
-            ClearCooldowns() : ServerPacket(SMSG_CLEAR_COOLDOWNS, 4 + 16) { }
-
-            WorldPacket const* Write() override;
-
-            std::vector<int32> SpellID;
-            ObjectGuid Guid;
-        };
-
-        class ClearCooldown final : public ServerPacket
-        {
-        public:
-            ClearCooldown() : ServerPacket(SMSG_CLEAR_COOLDOWN, 16 + 4 + 1) { }
-
-            WorldPacket const* Write() override;
-
-            ObjectGuid CasterGUID;
-            int32 SpellID = 0;
-            bool ClearOnHold = false;
-        };
-
-        class ModifyCooldown final : public ServerPacket
-        {
-        public:
-            ModifyCooldown() : ServerPacket(SMSG_MODIFY_COOLDOWN, 16 + 4 + 4) { }
-
-            WorldPacket const* Write() override;
-
-            ObjectGuid UnitGUID;
-            int32 DeltaTime = 0;
-            int32 SpellID = 0;
-        };
-
-        struct SpellCooldownStruct
-        {
-            SpellCooldownStruct() { }
-            SpellCooldownStruct(uint32 spellId, uint32 forcedCooldown) : SrecID(spellId), ForcedCooldown(forcedCooldown) { }
-
-            uint32 SrecID = 0;
-            uint32 ForcedCooldown = 0;
-        };
-
-        class SpellCooldown : public ServerPacket
-        {
-        public:
-            SpellCooldown() : ServerPacket(SMSG_SPELL_COOLDOWN, 4 + 16 + 1) { }
-
-            WorldPacket const* Write() override;
-
-            std::vector<SpellCooldownStruct> SpellCooldowns;
-            ObjectGuid Caster;
-            uint8 Flags = 0;
-        };
-
-        struct SpellHistoryEntry
-        {
-            uint32 SpellID = 0;
-            uint32 ItemID = 0;
-            uint32 Category = 0;
-            int32 RecoveryTime = 0;
-            int32 CategoryRecoveryTime = 0;
-            bool OnHold = false;
-        };
-
-        class SendSpellHistory final : public ServerPacket
-        {
-        public:
-            SendSpellHistory() : ServerPacket(SMSG_SEND_SPELL_HISTORY, 4) { }
-
-            WorldPacket const* Write() override;
-
-            std::vector<SpellHistoryEntry> Entries;
-        };
-
-        class ClearAllSpellCharges final : public ServerPacket
-        {
-        public:
-            ClearAllSpellCharges() : ServerPacket(SMSG_CLEAR_ALL_SPELL_CHARGES, 16) { }
-
-            WorldPacket const* Write() override;
-
-            ObjectGuid Unit;
-        };
-
-        class ClearSpellCharges final : public ServerPacket
-        {
-        public:
-            ClearSpellCharges() : ServerPacket(SMSG_CLEAR_SPELL_CHARGES, 20) { }
-
-            WorldPacket const* Write() override;
-
-            ObjectGuid Unit;
-            int32 Category = 0;
-        };
-
-        class SetSpellCharges final : public ServerPacket
-        {
-        public:
-            SetSpellCharges() : ServerPacket(SMSG_SET_SPELL_CHARGES, 1 + 4 + 4) { }
-
-            WorldPacket const* Write() override;
-
-            bool IsPet = false;
-            float Count = 0.0f;
-            int32 Category = 0;
-        };
-
-        struct SpellChargeEntry
-        {
-            uint32 Category = 0;
-            uint32 NextRecoveryTime = 0;
-            uint8 ConsumedCharges = 0;
-        };
-
-        class SendSpellCharges final : public ServerPacket
-        {
-        public:
-            SendSpellCharges() : ServerPacket(SMSG_SEND_SPELL_CHARGES, 4) { }
-
-            WorldPacket const* Write() override;
-
-            std::vector<SpellChargeEntry> Entries;
+            std::vector<uint32> Spells;
         };
     }
 }
 
 ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellCastLogData const& spellCastLogData);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::TargetLocation const& targetLocation);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellTargetData const& spellTargetData);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellMissStatus const& spellMissStatus);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellPowerData const& spellPowerData);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::RuneData const& runeData);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::MissileTrajectoryResult const& missileTrajectory);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellAmmo const& spellAmmo);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::ProjectileVisualData const& projectileVisual);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::CreatureImmunities const& immunities);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellHealPrediction const& spellPred);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellCastData const& spellCastData);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellModifierData const& spellModifierData);
+ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellModifier const& spellModifier);
 
 #endif // SpellPackets_h__

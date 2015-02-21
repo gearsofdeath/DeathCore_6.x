@@ -29,7 +29,6 @@ EndContentData */
 
 #include "ScriptMgr.h"
 #include "ScriptedCreature.h"
-#include "PassiveAI.h"
 #include "Player.h"
 
 /*######
@@ -49,17 +48,13 @@ class npc_webbed_creature : public CreatureScript
 public:
     npc_webbed_creature() : CreatureScript("npc_webbed_creature") { }
 
-    struct npc_webbed_creatureAI : public NullCreatureAI
+    struct npc_webbed_creatureAI : public ScriptedAI
     {
-        npc_webbed_creatureAI(Creature* creature) : NullCreatureAI(creature) { }
+        npc_webbed_creatureAI(Creature* creature) : ScriptedAI(creature) { }
 
         void Reset() override { }
 
         void EnterCombat(Unit* /*who*/) override { }
-
-        void AttackStart(Unit* /*who*/) override { }
-
-        void MoveInLineOfSight(Unit* /*who*/) override { }
 
         void JustDied(Unit* killer) override
         {

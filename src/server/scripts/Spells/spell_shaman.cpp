@@ -26,7 +26,6 @@
 #include "GridNotifiers.h"
 #include "Unit.h"
 #include "SpellScript.h"
-#include "SpellHistory.h"
 #include "SpellAuraEffects.h"
 
 enum ShamanSpells
@@ -311,7 +310,7 @@ class spell_sha_earth_shield : public SpellScriptLoader
             {
                 //! HACK due to currenct proc system implementation
                 if (Player* player = GetTarget()->ToPlayer())
-                    if (player->GetSpellHistory()->HasCooldown(SPELL_SHAMAN_EARTH_SHIELD_HEAL))
+                    if (player->HasSpellCooldown(SPELL_SHAMAN_EARTH_SHIELD_HEAL))
                         return false;
                 return true;
             }
@@ -324,7 +323,7 @@ class spell_sha_earth_shield : public SpellScriptLoader
 
                 /// @hack: due to currenct proc system implementation
                 if (Player* player = GetTarget()->ToPlayer())
-                    player->GetSpellHistory()->AddCooldown(SPELL_SHAMAN_EARTH_SHIELD_HEAL, 0, std::chrono::seconds(3));
+                    player->AddSpellCooldown(SPELL_SHAMAN_EARTH_SHIELD_HEAL, 0, time(NULL) + 3);
             }
 
             void Register() override
@@ -463,7 +462,7 @@ class spell_sha_feedback : public SpellScriptLoader
             {
                 PreventDefaultAction(); // will prevent default effect execution
                 if (Player* target = GetTarget()->ToPlayer())
-                    target->GetSpellHistory()->ModifyCooldown(SPELL_SHAMAN_ELEMENTAL_MASTERY, aurEff->GetBaseAmount());
+                    target->ModifySpellCooldown(SPELL_SHAMAN_ELEMENTAL_MASTERY, aurEff->GetBaseAmount());
             }
 
             void Register() override
@@ -833,7 +832,7 @@ class spell_sha_item_t10_elemental_2p_bonus : public SpellScriptLoader
             {
                 PreventDefaultAction();
                 if (Player* target = GetTarget()->ToPlayer())
-                    target->GetSpellHistory()->ModifyCooldown(SPELL_SHAMAN_ELEMENTAL_MASTERY, -aurEff->GetAmount());
+                    target->ModifySpellCooldown(SPELL_SHAMAN_ELEMENTAL_MASTERY, -aurEff->GetAmount());
             }
 
             void Register() override
@@ -950,7 +949,7 @@ class spell_sha_lava_surge_proc : public SpellScriptLoader
 
             void HandleDummy(SpellEffIndex /*effIndex*/)
             {
-                GetCaster()->GetSpellHistory()->ResetCooldown(SPELL_SHAMAN_LAVA_BURST, true);
+                GetCaster()->ToPlayer()->RemoveSpellCooldown(SPELL_SHAMAN_LAVA_BURST, true);
             }
 
             void Register() override
@@ -1018,7 +1017,7 @@ class spell_sha_nature_guardian : public SpellScriptLoader
             {
                 //! HACK due to currenct proc system implementation
                 if (Player* player = GetTarget()->ToPlayer())
-                    if (player->GetSpellHistory()->HasCooldown(GetSpellInfo()->Id))
+                    if (player->HasSpellCooldown(GetSpellInfo()->Id))
                         return false;
 
                 return GetTarget()->HealthBelowPctDamaged(30, eventInfo.GetDamageInfo()->GetDamage());
@@ -1035,7 +1034,7 @@ class spell_sha_nature_guardian : public SpellScriptLoader
                     eventInfo.GetProcTarget()->getThreatManager().modifyThreatPercent(GetTarget(), -10);
 
                 if (Player* player = GetTarget()->ToPlayer())
-                    player->GetSpellHistory()->AddCooldown(GetSpellInfo()->Id, 0, std::chrono::seconds(aurEff->GetSpellInfo()->GetEffect(EFFECT_1)->CalcValue()));
+                    player->AddSpellCooldown(GetSpellInfo()->Id, 0, time(NULL) + aurEff->GetSpellInfo()->GetEffect(EFFECT_1)->CalcValue());
             }
 
             void Register() override

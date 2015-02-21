@@ -26,7 +26,6 @@
 #include "Formulas.h"
 #include "SpellAuras.h"
 #include "SpellAuraEffects.h"
-#include "SpellHistory.h"
 #include "CreatureAI.h"
 #include "Unit.h"
 #include "Util.h"
@@ -409,7 +408,7 @@ void Pet::SavePetToDB(PetSaveMode mode)
         RemoveAllAuras();
 
     _SaveSpells(trans);
-    GetSpellHistory()->SaveToDB<Pet>(trans);
+    _SaveSpellCooldowns(trans);
     CharacterDatabase.CommitTransaction(trans);
 
     // current/stable/not_in_slot
@@ -509,10 +508,6 @@ void Pet::DeleteFromDB(uint32 guidlow)
     trans->Append(stmt);
 
     stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_PET_SPELL_COOLDOWNS);
-    stmt->setUInt32(0, guidlow);
-    trans->Append(stmt);
-
-    stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_PET_SPELL_CHARGES);
     stmt->setUInt32(0, guidlow);
     trans->Append(stmt);
 
@@ -1077,15 +1072,77 @@ uint32 Pet::GetCurrentFoodBenefitLevel(uint32 itemlevel) const
 
 void Pet::_LoadSpellCooldowns()
 {
+    m_CreatureSpellCooldowns.clear();
+    m_CreatureCategoryCooldowns.clear();
+
     PreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_PET_SPELL_COOLDOWN);
     stmt->setUInt32(0, m_charmInfo->GetPetNumber());
-    PreparedQueryResult cooldownsResult = CharacterDatabase.Query(stmt);
+    PreparedQueryResult result = CharacterDatabase.Query(stmt);
 
-    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_PET_SPELL_CHARGES);
+    if (result)
+    {
+        time_t curTime = time(NULL);
+
+        PacketCooldowns cooldowns;
+        WorldPacket data;
+
+        do
+        {
+            Field* fields = result->Fetch();
+
+            uint32 spell_id = fields[0].GetUInt32();
+            time_t db_time  = time_t(fields[1].GetUInt32());
+
+            if (!sSpellMgr->GetSpellInfo(spell_id))
+            {
+                TC_LOG_ERROR("entities.pet", "Pet %u have unknown spell %u in `pet_spell_cooldown`, skipping.", m_charmInfo->GetPetNumber(), spell_id);
+                continue;
+            }
+
+            // skip outdated cooldown
+            if (db_time <= curTime)
+                continue;
+
+            cooldowns[spell_id] = uint32(db_time - curTime)*IN_MILLISECONDS;
+
+            _AddCreatureSpellCooldown(spell_id, db_time);
+
+            TC_LOG_DEBUG("entities.pet", "Pet (Number: %u) spell %u cooldown loaded (%u secs).", m_charmInfo->GetPetNumber(), spell_id, uint32(db_time-curTime));
+        }
+        while (result->NextRow());
+
+        if (!cooldowns.empty())
+        {
+            BuildCooldownPacket(data, SPELL_COOLDOWN_FLAG_NONE, cooldowns);
+            GetOwner()->GetSession()->SendPacket(&data);
+        }
+    }
+}
+
+void Pet::_SaveSpellCooldowns(SQLTransaction& trans)
+{
+    PreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_PET_SPELL_COOLDOWNS);
     stmt->setUInt32(0, m_charmInfo->GetPetNumber());
-    PreparedQueryResult chargesResult = CharacterDatabase.Query(stmt);
+    trans->Append(stmt);
 
-    GetSpellHistory()->LoadFromDB<Pet>(cooldownsResult, chargesResult);
+    time_t curTime = time(NULL);
+
+    // remove oudated and save active
+    for (CreatureSpellCooldowns::iterator itr = m_CreatureSpellCooldowns.begin(); itr != m_CreatureSpellCooldowns.end();)
+    {
+        if (itr->second <= curTime)
+            m_CreatureSpellCooldowns.erase(itr++);
+        else
+        {
+            stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_PET_SPELL_COOLDOWN);
+            stmt->setUInt32(0, m_charmInfo->GetPetNumber());
+            stmt->setUInt32(1, itr->first);
+            stmt->setUInt32(2, uint32(itr->second));
+            trans->Append(stmt);
+
+            ++itr;
+        }
+    }
 }
 
 void Pet::_LoadSpells()
@@ -1923,6 +1980,40 @@ void Pet::SynchronizeLevelWithOwner()
             break;
         default:
             break;
+    }
+}
+
+void Pet::ProhibitSpellSchool(SpellSchoolMask idSchoolMask, uint32 unTimeMs)
+{
+    PacketCooldowns cooldowns;
+    WorldPacket data;
+    time_t curTime = time(NULL);
+    for (PetSpellMap::const_iterator itr = m_spells.begin(); itr != m_spells.end(); ++itr)
+    {
+        if (itr->second.state == PETSPELL_REMOVED)
+            continue;
+
+        uint32 unSpellId = itr->first;
+        SpellInfo const* spellInfo = sSpellMgr->EnsureSpellInfo(unSpellId);
+
+        // Not send cooldown for this spells
+        if (spellInfo->IsCooldownStartedOnEvent())
+            continue;
+
+        if (spellInfo->PreventionType != SPELL_PREVENTION_TYPE_SILENCE)
+            continue;
+
+        if ((idSchoolMask & spellInfo->GetSchoolMask()) && GetCreatureSpellCooldownDelay(unSpellId) < unTimeMs)
+        {
+            cooldowns[unSpellId] = unTimeMs;
+            _AddCreatureSpellCooldown(unSpellId, curTime + unTimeMs/IN_MILLISECONDS);
+        }
+    }
+
+    if (!cooldowns.empty())
+    {
+        BuildCooldownPacket(data, SPELL_COOLDOWN_FLAG_NONE, cooldowns);
+        GetOwner()->GetSession()->SendPacket(&data);
     }
 }
 

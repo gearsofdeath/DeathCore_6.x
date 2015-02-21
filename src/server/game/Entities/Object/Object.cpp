@@ -1058,7 +1058,8 @@ bool Object::RemoveGuidValue(uint16 index, ObjectGuid const& value)
     ASSERT(index + 3 < m_valuesCount || PrintIndexError(index, true));
     if (!value.IsEmpty() && *((ObjectGuid*)&(m_uint32Values[index])) == value)
     {
-        ((ObjectGuid*)&(m_uint32Values[index]))->Clear();
+        m_uint32Values[index] = 0;
+        m_uint32Values[index + 1] = 0;
         _changesMask.SetBit(index);
         _changesMask.SetBit(index + 1);
         _changesMask.SetBit(index + 2);
@@ -1190,15 +1191,6 @@ void Object::ApplyModInt32Value(uint16 index, int32 val, bool apply)
     int32 cur = GetInt32Value(index);
     cur += (apply ? val : -val);
     SetInt32Value(index, cur);
-}
-
-void Object::ApplyModUInt16Value(uint16 index, uint8 offset, int16 val, bool apply)
-{
-    int16 cur = GetUInt16Value(index, offset);
-    cur += (apply ? val : -val);
-    if (cur < 0)
-        cur = 0;
-    SetUInt16Value(index, offset, cur);
 }
 
 void Object::ApplyModSignedFloatValue(uint16 index, float  val, bool apply)
@@ -1400,7 +1392,7 @@ void Object::AddDynamicValue(uint16 index, uint32 value)
     if (mask.GetCount() < values.size())
         mask.AddBlock();
 
-    mask.SetBit(values.size() - 1);
+    mask.SetBit(values.size());
 
     if (m_inWorld && !m_objectUpdated)
     {

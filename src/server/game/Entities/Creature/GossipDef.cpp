@@ -25,7 +25,6 @@
 #include "Formulas.h"
 #include "QuestPackets.h"
 #include "NPCPackets.h"
-#include "WorldPacket.h"
 
 GossipMenu::GossipMenu()
 {
@@ -197,7 +196,6 @@ void PlayerMenu::SendGossipMenu(uint32 titleTextId, ObjectGuid objectGUID)
 
     WorldPackets::NPC::GossipMessage packet;
     packet.GossipGUID = objectGUID;
-    packet.GossipID = _gossipMenu.GetMenuId();
     packet.TextID = titleTextId;
 
     packet.GossipOptions.resize(_gossipMenu.GetMenuItems().size());
@@ -258,8 +256,8 @@ void PlayerMenu::SendCloseGossip()
 {
     _gossipMenu.SetSenderGUID(ObjectGuid::Empty);
 
-    WorldPackets::NPC::GossipComplete packet;
-    _session->SendPacket(packet.Write());
+    WorldPacket data(SMSG_GOSSIP_COMPLETE, 0);
+    _session->SendPacket(&data);
 }
 
 void PlayerMenu::SendPointOfInterest(uint32 poiId) const

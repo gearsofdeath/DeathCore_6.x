@@ -128,7 +128,7 @@ class boss_devourer_of_souls : public CreatureScript
 
         struct boss_devourer_of_soulsAI : public BossAI
         {
-            boss_devourer_of_soulsAI(Creature* creature) : BossAI(creature, DATA_DEVOURER_OF_SOULS)
+            boss_devourer_of_soulsAI(Creature* creature) : BossAI(creature, DATA_DEVOURER_EVENT)
             {
                 Initialize();
                 beamAngle = 0.f;
@@ -143,17 +143,20 @@ class boss_devourer_of_souls : public CreatureScript
 
             void Reset() override
             {
-                _Reset();
                 me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_DISABLE_MOVE);
                 me->SetDisplayId(DISPLAY_ANGER);
                 me->SetReactState(REACT_AGGRESSIVE);
 
+                events.Reset();
+                summons.DespawnAll();
+
                 Initialize();
+
+                instance->SetData(DATA_DEVOURER_EVENT, NOT_STARTED);
             }
 
             void EnterCombat(Unit* /*who*/) override
             {
-                _EnterCombat();
                 Talk(SAY_FACE_AGGRO);
 
                 if (!me->FindNearestCreature(NPC_CRUCIBLE_OF_SOULS, 60)) // Prevent double spawn
@@ -163,6 +166,8 @@ class boss_devourer_of_souls : public CreatureScript
                 events.ScheduleEvent(EVENT_WELL_OF_SOULS, 30000);
                 events.ScheduleEvent(EVENT_UNLEASHED_SOULS, 20000);
                 events.ScheduleEvent(EVENT_WAILING_SOULS, urand(60000, 70000));
+
+                instance->SetData(DATA_DEVOURER_EVENT, IN_PROGRESS);
             }
 
             void KilledUnit(Unit* victim) override
@@ -170,7 +175,7 @@ class boss_devourer_of_souls : public CreatureScript
                 if (victim->GetTypeId() != TYPEID_PLAYER)
                     return;
 
-                uint8 textId = 0;
+                int32 textId = 0;
                 switch (me->GetDisplayId())
                 {
                     case DISPLAY_ANGER:
@@ -192,11 +197,13 @@ class boss_devourer_of_souls : public CreatureScript
 
             void JustDied(Unit* /*killer*/) override
             {
-                _JustDied();
+                summons.DespawnAll();
 
                 Position spawnPoint = {5618.139f, 2451.873f, 705.854f, 0};
 
                 Talk(SAY_FACE_DEATH);
+
+                instance->SetData(DATA_DEVOURER_EVENT, DONE);
 
                 int32 entryIndex;
                 if (instance->GetData(DATA_TEAM_IN_INSTANCE) == ALLIANCE)
@@ -392,6 +399,11 @@ class spell_devourer_of_souls_mirrored_soul_proc : public SpellScriptLoader
             {
                 if (!sSpellMgr->GetSpellInfo(SPELL_MIRRORED_SOUL_DAMAGE))
                     return false;
+                return true;
+            }
+
+            bool Load() override
+            {
                 return true;
             }
 

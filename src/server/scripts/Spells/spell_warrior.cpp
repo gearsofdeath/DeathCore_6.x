@@ -23,7 +23,6 @@
 
 #include "Player.h"
 #include "ScriptMgr.h"
-#include "SpellHistory.h"
 #include "SpellScript.h"
 #include "SpellAuraEffects.h"
 
@@ -698,7 +697,7 @@ class spell_warr_sudden_death : public SpellScriptLoader
             {
                 // Remove cooldown on Colossus Smash
                 if (Player* player = GetTarget()->ToPlayer())
-                    player->GetSpellHistory()->ResetCooldown(SPELL_WARRIOR_COLOSSUS_SMASH, true);
+                    player->RemoveSpellCooldown(SPELL_WARRIOR_COLOSSUS_SMASH, true);
             }
 
             void Register() override
@@ -800,7 +799,7 @@ class spell_warr_sword_and_board : public SpellScriptLoader
             {
                 // Remove cooldown on Shield Slam
                 if (Player* player = GetTarget()->ToPlayer())
-                    player->GetSpellHistory()->ResetCooldown(SPELL_WARRIOR_SHIELD_SLAM, true);
+                    player->RemoveSpellCooldown(SPELL_WARRIOR_SHIELD_SLAM, true);
             }
 
             void Register() override
@@ -933,7 +932,7 @@ class spell_warr_vigilance_trigger : public SpellScriptLoader
 
                 // Remove Taunt cooldown
                 if (Player* target = GetHitPlayer())
-                    target->GetSpellHistory()->ResetCooldown(SPELL_WARRIOR_TAUNT, true);
+                    target->RemoveSpellCooldown(SPELL_WARRIOR_TAUNT, true);
             }
 
             void Register() override

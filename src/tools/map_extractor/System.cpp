@@ -1185,22 +1185,14 @@ void ExtractDBFilesClient(int l)
 
 bool OpenCascStorage()
 {
-    try
+    boost::filesystem::path const storage_dir (boost::filesystem::canonical (input_path) / "Data");
+    if (!CascOpenStorage(storage_dir.string().c_str(), 0, &CascStorage))
     {
-        boost::filesystem::path const storage_dir(boost::filesystem::canonical(input_path) / "Data");
-        if (!CascOpenStorage(storage_dir.string().c_str(), 0, &CascStorage))
-        {
-            printf("error opening casc storage '%s': %s\n", storage_dir.string().c_str(), HumanReadableCASCError(GetLastError()));
-            return false;
-        }
-        printf("opened casc storage '%s'\n", storage_dir.string().c_str());
-        return true;
-    }
-    catch (boost::filesystem::filesystem_error& error)
-    {
-        printf("error opening casc storage : %s\n", error.what());
+        printf("error opening casc storage '%s': %s\n", storage_dir.string().c_str(), HumanReadableCASCError(GetLastError()));
         return false;
     }
+    printf("opened casc storage '%s'\n", storage_dir.string().c_str());
+    return true;
 }
 
 int main(int argc, char * arg[])

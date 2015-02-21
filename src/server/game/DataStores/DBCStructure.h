@@ -1577,7 +1577,7 @@ struct SpellCategoriesEntry
     uint32      Mechanic;                                   // 6
     uint32      PreventionType;                             // 7
     uint32      StartRecoveryCategory;                      // 8
-    uint32      ChargeCategory;                             // 9
+    //uint32    ChargeCategory;                             // 9
 };
 
 typedef std::set<uint32> SpellCategorySet;
@@ -1601,8 +1601,8 @@ struct SpellCategoryEntry
     //uint8     UsesPerWeek;                                // 2
     //uint8     Padding[3];                                 // 2
     //char*     Name_lang;                                  // 3
-    int32       MaxCharges;                                 // 4
-    int32       ChargeRecoveryTime;                         // 5
+    //uint32    MaxCharges;                                 // 4
+    //uint32    ChargeRecoveryTime;                         // 5
 };
 
 struct SpellFocusObjectEntry
@@ -1788,7 +1788,6 @@ struct SummonPropertiesEntry
 };
 
 #define MAX_TALENT_TIERS 7
-#define MAX_TALENT_COLUMNS 3
 
 struct TalentEntry
 {

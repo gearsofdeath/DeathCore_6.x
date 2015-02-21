@@ -25,7 +25,6 @@
 #include "ScriptMgr.h"
 #include "SpellScript.h"
 #include "SpellAuraEffects.h"
-#include "SpellHistory.h"
 #include "Containers.h"
 
 enum DruidSpells
@@ -123,8 +122,8 @@ class spell_dru_eclipse : public SpellScriptLoader
                 if (!caster)
                     return;
 
-                if (caster->GetAuraOfRankedSpell(SPELL_DRUID_NATURES_GRACE))
-                    caster->GetSpellHistory()->ResetCooldown(SPELL_DRUID_NATURES_GRACE_TRIGGER, true);
+                if (caster->ToPlayer()->GetAuraOfRankedSpell(SPELL_DRUID_NATURES_GRACE))
+                    caster->ToPlayer()->RemoveSpellCooldown(SPELL_DRUID_NATURES_GRACE_TRIGGER, true);
             }
 
             void Register() override
@@ -165,7 +164,7 @@ class spell_dru_eclipse_energize : public SpellScriptLoader
                 Player* caster = GetCaster()->ToPlayer();
 
                 // No boomy, no deal.
-                if (caster->GetSpecId(caster->GetActiveTalentGroup()) != TALENT_SPEC_DRUID_BALANCE)
+                if (caster->GetActiveTalentSpec() != TALENT_SPEC_DRUID_BALANCE)
                     return;
 
                 switch (GetSpellInfo()->Id)

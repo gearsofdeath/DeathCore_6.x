@@ -44,14 +44,14 @@ bool AuctionBotSeller::Initialize()
     {
         std::stringstream includeStream(sAuctionBotConfig->GetAHBotIncludes());
         std::string temp;
-        while (std::getline(includeStream, temp, ','))
+        while (getline(includeStream, temp, ','))
             includeItems.push_back(atoi(temp.c_str()));
     }
 
     {
         std::stringstream excludeStream(sAuctionBotConfig->GetAHBotExcludes());
         std::string temp;
-        while (std::getline(excludeStream, temp, ','))
+        while (getline(excludeStream, temp, ','))
             excludeItems.push_back(atoi(temp.c_str()));
     }
 

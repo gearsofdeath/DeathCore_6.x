@@ -31,19 +31,21 @@
 
 void WorldSession::HandleAttackSwingOpcode(WorldPackets::Combat::AttackSwing& packet)
 {
-    Unit* enemy = ObjectAccessor::GetUnit(*_player, packet.Victim);
+    TC_LOG_DEBUG("network", "WORLD: Recvd CMSG_ATTACKSWING Message %s", packet.Victim.ToString().c_str());
 
-    if (!enemy)
+    Unit* pEnemy = ObjectAccessor::GetUnit(*_player, packet.Victim);
+
+    if (!pEnemy)
     {
         // stop attack state at client
-        SendAttackStop(nullptr);
+        SendAttackStop(NULL);
         return;
     }
 
-    if (!_player->IsValidAttackTarget(enemy))
+    if (!_player->IsValidAttackTarget(pEnemy))
     {
         // stop attack state at client
-        SendAttackStop(enemy);
+        SendAttackStop(pEnemy);
         return;
     }
 
@@ -56,12 +58,12 @@ void WorldSession::HandleAttackSwingOpcode(WorldPackets::Combat::AttackSwing& pa
         ASSERT(seat);
         if (!(seat->Flags & VEHICLE_SEAT_FLAG_CAN_ATTACK))
         {
-            SendAttackStop(enemy);
+            SendAttackStop(pEnemy);
             return;
         }
     }
 
-    _player->Attack(enemy, true);
+    _player->Attack(pEnemy, true);
 }
 
 void WorldSession::HandleAttackStopOpcode(WorldPackets::Combat::AttackStop& /*recvData*/)
@@ -69,18 +71,31 @@ void WorldSession::HandleAttackStopOpcode(WorldPackets::Combat::AttackStop& /*re
     GetPlayer()->AttackStop();
 }
 
-void WorldSession::HandleSetSheathedOpcode(WorldPackets::Combat::SetSheathed& packet)
+void WorldSession::HandleSetSheathedOpcode(WorldPacket& recvData)
 {
-    if (packet.CurrentSheathState >= MAX_SHEATH_STATE)
+    uint32 sheathed;
+    recvData >> sheathed;
+
+    //TC_LOG_DEBUG("network", "WORLD: Recvd CMSG_SETSHEATHED Message guidlow:%u value1:%u", GetPlayer()->GetGUIDLow(), sheathed);
+
+    if (sheathed >= MAX_SHEATH_STATE)
     {
-        TC_LOG_ERROR("network", "Unknown sheath state %u ??", packet.CurrentSheathState);
+        TC_LOG_ERROR("network", "Unknown sheath state %u ??", sheathed);
         return;
     }
 
-    GetPlayer()->SetSheath(SheathState(packet.CurrentSheathState));
+    GetPlayer()->SetSheath(SheathState(sheathed));
 }
 
 void WorldSession::SendAttackStop(Unit const* enemy)
 {
-    SendPacket(WorldPackets::Combat::SAttackStop(GetPlayer(), enemy).Write());
+    WorldPacket data(SMSG_ATTACKSTOP, (8+8+4));             // we guess size
+    data << GetPlayer()->GetPackGUID();
+    if (enemy)
+        data << enemy->GetPackGUID();
+    else
+        data << uint8(0);
+
+    data << uint32(0);                                      // unk, can be 1 also
+    SendPacket(&data);
 }

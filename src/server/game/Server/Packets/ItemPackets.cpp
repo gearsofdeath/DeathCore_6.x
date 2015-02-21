@@ -19,42 +19,11 @@
 
 void WorldPackets::Item::BuyBackItem::Read()
 {
-    _worldPacket >> VendorGUID
-                 >> Slot;
+    _worldPacket >> VendorGUID;
+    _worldPacket >> Slot;
 }
 
-void WorldPackets::Item::BuyItem::Read()
-{
-    _worldPacket >> VendorGUID
-                 >> ContainerGUID
-                 >> Item
-                 >> Quantity
-                 >> Muid
-                 >> Slot;
-
-    ItemType = static_cast<ItemVendorType>(_worldPacket.ReadBits(2));
-}
-
-WorldPacket const* WorldPackets::Item::BuySucceeded::Write()
-{
-    _worldPacket << VendorGUID
-                 << uint32(Muid)
-                 << int32(NewQuantity)
-                 << uint32(QuantityBought);
-
-    return &_worldPacket;
-}
-
-WorldPacket const* WorldPackets::Item::BuyFailed::Write()
-{
-    _worldPacket << VendorGUID
-                 << uint32(Muid)
-                 << uint8(Reason);
-
-    return &_worldPacket;
-}
-
-void WorldPackets::Item::GetItemPurchaseData::Read()
+void WorldPackets::Item::ItemRefundInfo::Read()
 {
     _worldPacket >> ItemGUID;
 }
@@ -99,56 +68,25 @@ ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Item::ItemBonusInstanceDa
     return data;
 }
 
-ByteBuffer& operator>>(ByteBuffer& data, WorldPackets::Item::ItemBonusInstanceData& itemBonusInstanceData)
-{
-    uint32 bonusListIdSize;
-
-    data >> itemBonusInstanceData.Context;
-    data >> bonusListIdSize;
-
-    for (uint32 i = 0u; i < bonusListIdSize; ++i)
-    {
-        uint32 bonusId;
-        data >> bonusId;
-        itemBonusInstanceData.BonusListIDs.push_back(bonusId);
-    }
-
-    return data;
-}
-
 ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Item::ItemInstance const& itemInstance)
 {
-    data << int32(itemInstance.ItemID);
-    data << int32(itemInstance.RandomPropertiesSeed);
-    data << int32(itemInstance.RandomPropertiesID);
+    data << itemInstance.ItemID;
+    data << itemInstance.RandomPropertiesSeed;
+    data << itemInstance.RandomPropertiesID;
 
     data.WriteBit(itemInstance.ItemBonus.HasValue);
-    data.WriteBit(itemInstance.Modifications.HasValue);
+    data.WriteBit(!itemInstance.Modifications.empty());
     data.FlushBits();
 
     if (itemInstance.ItemBonus.HasValue)
         data << itemInstance.ItemBonus.Value;
 
-    if (itemInstance.Modifications.HasValue)
-        data << itemInstance.Modifications.Value;
-
-    return data;
-}
-
-ByteBuffer& operator>>(ByteBuffer& data, WorldPackets::Item::ItemInstance& itemInstance)
-{
-    data >> itemInstance.ItemID;
-    data >> itemInstance.RandomPropertiesSeed;
-    data >> itemInstance.RandomPropertiesID;
-
-    itemInstance.ItemBonus.HasValue = data.ReadBit();
-    itemInstance.Modifications.HasValue = data.ReadBit();
-
-    if (itemInstance.ItemBonus.HasValue)
-        data >> itemInstance.ItemBonus.Value;
-
-    if (itemInstance.Modifications.HasValue)
-        data >> itemInstance.Modifications.Value;
+    if (!itemInstance.Modifications.empty())
+    {
+        data << uint32(itemInstance.Modifications.size() * sizeof(uint32));
+        for (int32 itemMod : itemInstance.Modifications)
+            data << itemMod;
+    }
 
     return data;
 }
@@ -163,44 +101,6 @@ ByteBuffer& WorldPackets::Item::operator>>(ByteBuffer& data, InvUpdate& invUpdat
     }
 
     return data;
-}
-
-void WorldPackets::Item::ItemInstance::Initalize(::Item const* item)
-{
-    ItemID               = item->GetEntry();
-    RandomPropertiesSeed = item->GetItemSuffixFactor();
-    RandomPropertiesID   = item->GetItemRandomPropertyId();
-    std::vector<uint32> const& bonusListIds = item->GetDynamicValues(ITEM_DYNAMIC_FIELD_BONUSLIST_IDS);
-    if (!bonusListIds.empty())
-    {
-        ItemBonus.HasValue = true;
-        ItemBonus.Value.BonusListIDs.insert(ItemBonus.Value.BonusListIDs.end(), bonusListIds.begin(), bonusListIds.end());
-        ItemBonus.Value.Context = item->GetUInt32Value(ITEM_FIELD_CONTEXT);
-    }
-
-    uint32 mask = item->GetUInt32Value(ITEM_FIELD_MODIFIERS_MASK);
-    Modifications.HasValue = mask != 0;
-
-    for (size_t i = 0; mask != 0; mask >>= 1, ++i)
-    {
-        if ((mask & 1) != 0)
-            Modifications.Value.Insert(i, item->GetModifier(ItemModifier(i)));
-    }
-}
-
-void WorldPackets::Item::ItemInstance::Initalize(::LootItem const& lootItem)
-{
-    ItemID               = lootItem.itemid;
-    RandomPropertiesSeed = lootItem.randomSuffix;
-    RandomPropertiesID   = lootItem.randomPropertyId;
-    if (!lootItem.BonusListIDs.empty())
-    {
-        ItemBonus.HasValue = true;
-        ItemBonus.Value.BonusListIDs = lootItem.BonusListIDs;
-        ItemBonus.Value.Context = 0; /// @todo
-    }
-
-    /// no Modifications
 }
 
 WorldPacket const* WorldPackets::Item::InventoryChangeFailure::Write()
@@ -255,14 +155,6 @@ void WorldPackets::Item::AutoEquipItem::Read()
     _worldPacket >> Inv
                  >> PackSlot
                  >> Slot;
-}
-
-void WorldPackets::Item::AutoStoreBagItem::Read()
-{
-    _worldPacket >> Inv
-                 >> ContainerSlotB
-                 >> ContainerSlotA
-                 >> SlotA;
 }
 
 void WorldPackets::Item::DestroyItem::Read()

@@ -300,7 +300,7 @@ public:
                 else if (commentToken[1] == '/')
                 {
                     std::string str;
-                    std::getline(ifs, str);
+                    getline(ifs, str);
                     continue;
                 }
                 // regular data

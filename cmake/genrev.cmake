@@ -19,9 +19,9 @@ if(NOT BUILDDIR)
 endif()
 
 if(NO_GIT)
-  set(rev_date "20-02-2015 11:55:00 +2b6e")
+  set(rev_date "25-01-2015 23:10:00 +1b2f")
   set(rev_hash "DeathCore")
-  set(rev_branch "Arquivado")
+  set(rev_branch "Archived")
 else()
   if(GIT_EXEC)
     # Create a revision-string that we can use
@@ -58,10 +58,10 @@ else()
     # No valid ways available to find/set the revision/hash, so let's force some defaults
     message(STATUS "
     Could not find a proper repository signature (hash) - you may need to pull tags with git fetch -t
-    Continuing anyway - note that the versionstring will be set to \"DeathCore 20-02-2015 11:55:00 (Arquivado)\"")
-    set(rev_date "20-02-2015 11:55:00 +2b6e")
+    Continuing anyway - note that the versionstring will be set to \"DeathCore 25-01-2015 23:10:00 (Archived)\"")
+    set(rev_date "25-01-2015 23:10:00 +1b2f")
     set(rev_hash "DeathCore")
-    set(rev_branch "Arquivado")
+    set(rev_branch "Archived")
   else()
     # Extract information required to build a proper versionstring
     string(REGEX REPLACE init-|[0-9]+-g "" rev_hash ${rev_info})

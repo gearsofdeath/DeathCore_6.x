@@ -36,17 +36,6 @@ namespace WorldPackets
             ObjectGuid Victim;
         };
 
-        class AttackSwingError final : public ServerPacket
-        {
-        public:
-            AttackSwingError() : ServerPacket(SMSG_ATTACKSWING_ERROR, 4) { }
-            AttackSwingError(AttackSwingErr reason) : ServerPacket(SMSG_ATTACKSWING_ERROR, 4), Reason(reason) { }
-
-            WorldPacket const* Write() override;
-
-            AttackSwingErr Reason = ATTACKSWINGERR_CANT_ATTACK;
-        };
-
         class AttackStop final : public ClientPacket
         {
         public:
@@ -69,14 +58,13 @@ namespace WorldPackets
         class SAttackStop final : public ServerPacket
         {
         public:
-            SAttackStop() : ServerPacket(SMSG_ATTACKSTOP, 16 + 16 + 1) { }
-            SAttackStop(Unit const* attacker, Unit const* victim);
+            SAttackStop() : ServerPacket(SMSG_ATTACKSTOP, 17) { }
 
             WorldPacket const* Write() override;
 
             ObjectGuid Attacker;
             ObjectGuid Victim;
-            bool NowDead = false;
+            bool Dead = false;
         };
 
         struct ThreatInfo
@@ -162,7 +150,7 @@ namespace WorldPackets
 
             WorldPacket const* Write() override;
 
-            Optional<Spells::SpellCastLogData> LogData;
+            Optional<WorldPackets::Spells::SpellCastLogData> LogData;
             uint32 HitInfo          = 0; // Flags
             ObjectGuid AttackerGUID;
             ObjectGuid VictimGUID;
@@ -176,44 +164,6 @@ namespace WorldPackets
             int32 RageGained        = 0;
             UnkAttackerState UnkState;
             float Unk               = 0.0f;
-        };
-
-        class CancelCombat final : public ServerPacket
-        {
-        public:
-            CancelCombat() : ServerPacket(SMSG_CANCEL_COMBAT, 0) { }
-
-            WorldPacket const* Write() override { return &_worldPacket; }
-        };
-
-        struct PowerUpdatePower
-        {
-            PowerUpdatePower(int32 power, uint8 powerType) : Power(power), PowerType(powerType) { }
-
-            int32 Power = 0;
-            uint8 PowerType = 0;
-        };
-
-        class PowerUpdate final : public ServerPacket
-        {
-        public:
-            PowerUpdate() : ServerPacket(SMSG_POWER_UPDATE, 16 + 4 + 1) { }
-
-            WorldPacket const* Write() override;
-
-            ObjectGuid Guid;
-            std::vector<PowerUpdatePower> Powers;
-        };
-
-        class SetSheathed final : public ClientPacket
-        {
-        public:
-            SetSheathed(WorldPacket&& packet) : ClientPacket(CMSG_SET_SHEATHED, std::move(packet)) { }
-
-            void Read() override;
-
-            int32 CurrentSheathState = 0;
-            bool Animate = true;
         };
     }
 }

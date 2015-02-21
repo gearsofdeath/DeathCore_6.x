@@ -61,7 +61,7 @@ boost::asio::deadline_timer _dbPingTimer(_ioService);
 uint32 _dbPingInterval;
 LoginDatabaseWorkerPool LoginDatabase;
 
-int mainImpl(int argc, char** argv)
+int main(int argc, char** argv)
 {
     std::string configFile = _TRINITY_BNET_CONFIG;
     auto vm = GetConsoleArguments(argc, argv, configFile);
@@ -79,7 +79,7 @@ int mainImpl(int argc, char** argv)
     TC_LOG_INFO("server.bnetserver", "%s (bnetserver)", _FULLVERSION);
     TC_LOG_INFO("server.bnetserver", "<Ctrl-C> to stop.\n");
 	TC_LOG_INFO("server.bnetserver", "	D E A T H");
-    TC_LOG_INFO("server.bnetserver", "              C O R E 6.x.x");
+    TC_LOG_INFO("server.bnetserver", "              C O R E 6.X.X");
     TC_LOG_INFO("server.bnetserver", "http://www.noffearrdeathproject.net \n");
 	TC_LOG_INFO("server.bnetserver", "Using configuration file %s.", configFile.c_str());
     TC_LOG_INFO("server.bnetserver", "Using SSL version: %s (library: %s)", OPENSSL_VERSION_TEXT, SSLeay_version(SSLEAY_VERSION));
@@ -159,23 +159,6 @@ int mainImpl(int argc, char** argv)
     return 0;
 }
 
-int main(int argc, char** argv)
-{
-    try
-    {
-        return mainImpl(argc, argv);
-    }
-    catch (std::exception& ex)
-    {
-        std::cerr << "Top-level exception caught:" << ex.what() << "\n";
-
-#ifndef NDEBUG // rethrow exception for the debugger
-        throw;
-#else
-        return 1;
-#endif
-    }
-}
 
 /// Initialize connection to the database
 bool StartDB()

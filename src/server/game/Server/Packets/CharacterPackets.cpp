@@ -17,7 +17,6 @@
 
 #include "CharacterPackets.h"
 #include "ObjectMgr.h"
-#include "PacketUtilities.h"
 #include "World.h"
 
 WorldPackets::Character::EnumCharactersResult::CharacterInfo::CharacterInfo(Field* fields)
@@ -46,7 +45,7 @@ WorldPackets::Character::EnumCharactersResult::CharacterInfo::CharacterInfo(Fiel
     PreLoadPosition.y = fields[11].GetFloat();
     PreLoadPosition.z = fields[12].GetFloat();
 
-    if (ObjectGuid::LowType guildId = fields[13].GetUInt64())
+    if (uint32 guildId = fields[13].GetUInt32())
         GuildGuid = ObjectGuid::Create<HighGuid::Guild>(guildId);
 
     uint32 playerFlags  = fields[14].GetUInt32();
@@ -131,7 +130,9 @@ WorldPacket const* WorldPackets::Character::EnumCharactersResult::Write()
         _worldPacket << uint8(charInfo.Level);
         _worldPacket << int32(charInfo.ZoneId);
         _worldPacket << int32(charInfo.MapId);
-        _worldPacket << charInfo.PreLoadPosition;
+        _worldPacket << float(charInfo.PreLoadPosition.x);
+        _worldPacket << float(charInfo.PreLoadPosition.y);
+        _worldPacket << float(charInfo.PreLoadPosition.z);
         _worldPacket << charInfo.GuildGuid;
         _worldPacket << uint32(charInfo.Flags);
         _worldPacket << uint32(charInfo.CustomizationFlag);
@@ -388,9 +389,4 @@ WorldPacket const* WorldPackets::Character::InitialSetup::Write()
         _worldPacket.append(QuestsCompleted.data(), QuestsCompleted.size());
 
     return &_worldPacket;
-}
-
-void WorldPackets::Character::SetActionBarToggles::Read()
-{
-    _worldPacket >> Mask;
 }

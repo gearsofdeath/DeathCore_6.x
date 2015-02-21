@@ -186,7 +186,6 @@ enum SpellCustomAttributes
     SPELL_ATTR0_CU_CONE_LINE                     = 0x00000004,
     SPELL_ATTR0_CU_SHARE_DAMAGE                  = 0x00000008,
     SPELL_ATTR0_CU_NO_INITIAL_THREAT             = 0x00000010,
-    SPELL_ATTR0_CU_IS_TALENT                     = 0x00000020,
     SPELL_ATTR0_CU_AURA_CC                       = 0x00000040,
     SPELL_ATTR0_CU_DIRECT_DAMAGE                 = 0x00000100,
     SPELL_ATTR0_CU_CHARGE                        = 0x00000200,
@@ -399,7 +398,6 @@ public:
     uint32 PreventionType;
     int32  RequiredAreasID;
     uint32 SchoolMask;
-    SpellCategoryEntry const* ChargeCategoryEntry;
     uint32 SpellDifficultyId;
     uint32 SpellScalingId;
     uint32 SpellAuraOptionsId;
@@ -450,7 +448,7 @@ public:
     SpellTotemsEntry const* GetSpellTotems() const;
     SpellMiscEntry const* GetSpellMisc() const;
 
-    SpellInfo(SpellEntry const* spellEntry, SpellEffectEntryMap const& effectsMap);
+    SpellInfo(SpellEntry const* spellEntry, SpellEffectEntryMap effects);
     ~SpellInfo();
 
     uint32 GetCategory() const;
@@ -572,7 +570,6 @@ public:
 
     // unloading helpers
     void _UnloadImplicitTargetConditionLists();
-    void _UnloadSpellEffects();
 
     SpellEffectInfoVector GetEffectsForDifficulty(uint32 difficulty) const;
     SpellEffectInfo const* GetEffect(uint32 difficulty, uint32 index) const;
